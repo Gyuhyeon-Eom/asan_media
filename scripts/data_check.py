@@ -46,6 +46,11 @@ def read_zip_csv(zip_path, csv_name, nrows=5):
 card_zips = sorted(glob.glob(os.path.join(DATA_DIRS["카드매출"], "**/*.zip"), recursive=True))
 if not card_zips:
     card_zips = sorted(glob.glob(os.path.join(DATA_DIRS["카드매출"], "*.zip")))
+# ZIP 없으면 CSV 직접 탐색
+card_csvs = sorted(glob.glob(os.path.join(DATA_DIRS["카드매출"], "**/*.csv"), recursive=True))
+print(f"카드매출 CSV (ZIP 외): {len(card_csvs)}개")
+for f in card_csvs[:5]:
+    print(f"  {os.path.basename(f)}")
 print(f"카드매출 ZIP: {len(card_zips)}개")
 if card_zips:
     with zipfile.ZipFile(card_zips[0]) as zf:
@@ -125,9 +130,14 @@ if tmap_files:
 # ## 4. SKT 유동인구 (대용량)
 # 
 
-skt_files = sorted(glob.glob(os.path.join(DATA_DIRS["인구"], "**/AS_SKT_*"), recursive=True))
-if not skt_files:
-    skt_files = sorted(glob.glob(os.path.join(DATA_DIRS["인구"], "AS_SKT_*")))
+# 인구 데이터는 202601, 202602 폴더에 Excel 파일로 존재
+pop_base = DATA_DIRS["인구"]
+skt_files = []
+for sub in ["202601", "202602"]:
+    folder = os.path.join(pop_base, sub)
+    if os.path.exists(folder):
+        skt_files += sorted(glob.glob(os.path.join(folder, "AS_SKT_*")))
+        skt_files += sorted(glob.glob(os.path.join(folder, "AS_HYUNDAE_*")))
 print(f"SKT 파일: {len(skt_files)}개")
 for f in skt_files:
     sz = os.path.getsize(f)/(1024**3)
@@ -135,14 +145,45 @@ for f in skt_files:
 
 
 # SKT head만 (대용량 주의)
-for f in skt_files[:4]:
+for f in skt_files[:6]:
+    fname = os.path.basename(f)
     try:
-        df = pd.read_csv(f, nrows=5, encoding='utf-8-sig')
+        sz = os.path.getsize(f)/1024/1024
     except:
-        try: df = pd.read_csv(f, nrows=5, encoding='cp949')
-        except: print(f"읽기 실패: {os.path.basename(f)}"); continue
+        sz = 0
+    
+    # 500MB 이상은 head만 (Excel은 전체 로드되므로 주의)
+    if sz > 500:
+        print(f"\n{'='*80}")
+        print(f"{fname} | {sz:.0f}MB - 대용량! openpyxl read_only로 head만 읽기")
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(f, read_only=True)
+            ws = wb.active
+            rows = []
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                rows.append(row)
+                if i >= 5: break
+            wb.close()
+            if rows:
+                df = pd.DataFrame(rows[1:], columns=rows[0])
+                print(f"컬럼: {list(df.columns)}")
+                print(df.head().to_string())
+        except Exception as e:
+            print(f"읽기 실패: {e}")
+        continue
+    
+    try:
+        if fname.endswith('.xlsx') or fname.endswith('.xls'):
+            df = pd.read_excel(f, nrows=5)
+        else:
+            df = pd.read_csv(f, nrows=5, encoding='utf-8-sig')
+    except Exception as e:
+        print(f"읽기 실패: {fname} - {e}")
+        continue
+    
     print(f"\n{'='*80}")
-    print(f"{os.path.basename(f)} | 컬럼: {len(df.columns)}개")
+    print(f"{fname} | {sz:.0f}MB | 컬럼: {len(df.columns)}개")
     print(f"컬럼: {list(df.columns)}")
     print(df.head().to_string())
 
@@ -151,25 +192,28 @@ for f in skt_files[:4]:
 # ## 5. 인구 데이터
 # 
 
-pop_files = sorted(glob.glob(os.path.join(DATA_DIRS["인구"], "**/*"), recursive=True))
-# 인구 폴더 전체
+# 인구 데이터 전체 파일 목록 (202601, 202602)
+pop_base = DATA_DIRS["인구"]
+pop_files = []
+for sub in ["202601", "202602"]:
+    folder = os.path.join(pop_base, sub)
+    if os.path.exists(folder):
+        for f in sorted(os.listdir(folder)):
+            fp = os.path.join(folder, f)
+            if os.path.isfile(fp):
+                pop_files.append(fp)
 
-pop_files = list(set(pop_files))
-
-print(f"인구 관련 파일: {len(pop_files)}개")
-for f in pop_files[:5]:
-    sz = os.path.getsize(f)/1024/1024
-    print(f"  {os.path.basename(f)}: {sz:.0f}MB")
-
-for f in pop_files[:3]:
-    try: df = pd.read_csv(f, nrows=5, encoding='utf-8-sig')
+print(f"인구/SKT 전체 파일: {len(pop_files)}개")
+print(f"{'파일명':<55} {'용량':>10}")
+print("-"*67)
+for f in pop_files:
+    try:
+        sz = os.path.getsize(f)/1024/1024
+        unit = "MB" if sz < 1024 else "GB"
+        val = sz if sz < 1024 else sz/1024
+        print(f"  {os.path.basename(f):<53} {val:>7.1f}{unit}")
     except:
-        try: df = pd.read_csv(f, nrows=5, encoding='cp949')
-        except: continue
-    print(f"\n{'='*80}")
-    print(f"{os.path.basename(f)} | 컬럼: {len(df.columns)}개")
-    print(f"컬럼: {list(df.columns)}")
-    print(df.head().to_string())
+        print(f"  {os.path.basename(f):<53} (접근불가)")
 
 
 # ---
@@ -182,7 +226,7 @@ for root, dirs, files in os.walk(BASE_DIR):
         fp = os.path.join(root, f)
         all_files.append({
             '파일': os.path.relpath(fp, DATA_DIR),
-            '용량(MB)': round(os.path.getsize(fp)/1024/1024, 1),
+            '용량(MB)': round(os.path.getsize(fp)/1024/1024, 1) if os.path.isfile(fp) else 0,
             '확장자': os.path.splitext(f)[1]
         })
 
