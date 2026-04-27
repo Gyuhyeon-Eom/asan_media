@@ -1,0 +1,23 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local config
+config/*.local.yaml
+config/*.local.yml
+
+# Data files (데이터는 별도 관리)
+*.zip
+*.csv
+data/
+
+# OS
+.DS_Store
+Thumbs.db

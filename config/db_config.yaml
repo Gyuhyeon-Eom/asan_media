@@ -1,0 +1,8 @@
+# DB 접속 설정 - 로컬에 db_config.local.yaml로 복사해서 사용
+database:
+  host: localhost
+  port: 5432
+  dbname: asan_media
+  user: your_user
+  password: your_password
+  schema: asan_media
