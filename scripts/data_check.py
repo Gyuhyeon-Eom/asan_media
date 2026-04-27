@@ -62,7 +62,7 @@ if card_zips:
                 print(f"\n{'='*80}")
                 print(f"{csv_name} | 컬럼: {len(df.columns)}개")
                 print(f"컬럼명: {list(df.columns)}")
-                display(df.head(3))
+                print(df.head(3).to_string())
 
 
 # ### ASAN_CSTMR_DATA 상세
@@ -78,7 +78,7 @@ if card_zips:
             print(f"\nSEX: {df['SEX'].value_counts().to_dict()}")
             print(f"AGE: {sorted(df['AGE'].unique())}")
             print(f"\n통계:\n{df.describe()}")
-            display(df.head())
+            print(df.head().to_string())
 
 
 # ---
@@ -102,7 +102,7 @@ if kcb_zips:
             if df is not None:
                 print(f"\n{'='*80}")
                 print(f"{csv_name} | 컬럼: {len(df.columns)}개")
-                display(df.head(3))
+                print(df.head(3).to_string())
 
 
 # ---
@@ -118,7 +118,7 @@ if tmap_files:
     print(f"\n{os.path.basename(tmap_files[0])} | Shape: {df.shape}")
     print(f"\n타입:\n{df.dtypes}")
     print(f"\n목적지 카테고리 TOP 10:\n{df['dstn_ctgy'].value_counts().head(10)}")
-    display(df.head())
+    print(df.head().to_string())
 
 
 # ---
@@ -144,7 +144,7 @@ for f in skt_files[:4]:
     print(f"\n{'='*80}")
     print(f"{os.path.basename(f)} | 컬럼: {len(df.columns)}개")
     print(f"컬럼: {list(df.columns)}")
-    display(df.head())
+    print(df.head().to_string())
 
 
 # ---
@@ -169,7 +169,7 @@ for f in pop_files[:3]:
     print(f"\n{'='*80}")
     print(f"{os.path.basename(f)} | 컬럼: {len(df.columns)}개")
     print(f"컬럼: {list(df.columns)}")
-    display(df.head())
+    print(df.head().to_string())
 
 
 # ---
@@ -191,5 +191,5 @@ print(f"전체 파일: {len(df_all)}개 | 총 용량: {df_all['용량(MB)'].sum(
 print(f"\n확장자별:")
 print(df_all.groupby('확장자')['용량(MB)'].agg(['count','sum']).sort_values('sum', ascending=False))
 print(f"\n상위 20개:")
-display(df_all.head(20))
+print(df_all.head(20).to_string())
 
