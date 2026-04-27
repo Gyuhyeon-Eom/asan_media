@@ -11,12 +11,12 @@ CREATE SCHEMA IF NOT EXISTS asan_media;
 -- ============================================================
 CREATE TABLE IF NOT EXISTS asan_media.card_daily (
     id              BIGSERIAL PRIMARY KEY,
-    sale_date       VARCHAR(8)    NOT NULL,
-    mega_cty_no     VARCHAR(2),
+    sale_date       VARCHAR(15)    NOT NULL,
+    mega_cty_no     VARCHAR(10),
     mega_cty_nm     VARCHAR(20),
-    cty_rgn_no      VARCHAR(4),
+    cty_rgn_no      VARCHAR(10),
     cty_rgn_nm      VARCHAR(20),
-    admi_cty_no     VARCHAR(8),
+    admi_cty_no     VARCHAR(15),
     admi_cty_nm     VARCHAR(20),
     main_buz_code   VARCHAR(10),
     main_buz_desc   VARCHAR(50),
@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS asan_media.card_daily (
     tp_grp_nm       VARCHAR(50),
     tp_buz_no       VARCHAR(10),
     tp_buz_nm       VARCHAR(50),
-    sex             VARCHAR(1),
+    sex             VARCHAR(5),
     age             INTEGER,
     sale_amt        BIGINT,
     sale_cnt        INTEGER,
-    data_type       VARCHAR(10) NOT NULL  -- 'CSTMR' or 'MER'
+    data_type       VARCHAR(10) NOT NULL or 'MER'
 );
 CREATE INDEX IF NOT EXISTS idx_card_daily_date ON asan_media.card_daily(sale_date);
 CREATE INDEX IF NOT EXISTS idx_card_daily_dong ON asan_media.card_daily(admi_cty_no);
@@ -38,20 +38,20 @@ CREATE INDEX IF NOT EXISTS idx_card_daily_dong ON asan_media.card_daily(admi_cty
 -- ============================================================
 CREATE TABLE IF NOT EXISTS asan_media.card_consumption (
     id              BIGSERIAL PRIMARY KEY,
-    crtr_period     VARCHAR(8)    NOT NULL,   -- YYYYMM or YYYYWW
-    period_type     VARCHAR(4)    NOT NULL,   -- 'MM' or 'WEEK'
+    crtr_period     VARCHAR(15)    NOT NULL,   -- YYYYMM or YYYYWW
+    period_type     VARCHAR(10)    NOT NULL,   -- 'MM' or 'WEEK'
     data_category   VARCHAR(30)   NOT NULL,   -- 'CUST_DONG','CUST_SGG','EXCL_LC_DONG','EXCL_RSDT_DONG' 등
     cust_ctpv_nm    VARCHAR(20),
     cust_sgg_nm     VARCHAR(20),
     cust_dong_nm    VARCHAR(20),
-    cust_area_cd    VARCHAR(8),
+    cust_area_cd    VARCHAR(15),
     frcs_ctpv_nm    VARCHAR(20),
     frcs_sgg_nm     VARCHAR(20),
     frcs_dong_nm    VARCHAR(20),
-    frcs_area_cd    VARCHAR(8),
-    tobiz_cd        VARCHAR(4),
+    frcs_area_cd    VARCHAR(15),
+    tobiz_cd        VARCHAR(10),
     tobiz_nm        VARCHAR(30),
-    frcs_sls_sz     VARCHAR(1),
+    frcs_sls_sz     VARCHAR(5),
     all_use_nocs    INTEGER,
     indiv_use_nocs  INTEGER,
     corp_use_nocs   INTEGER,
@@ -88,13 +88,13 @@ CREATE INDEX IF NOT EXISTS idx_card_cons_cat ON asan_media.card_consumption(data
 -- ============================================================
 CREATE TABLE IF NOT EXISTS asan_media.card_biz_sales (
     id              BIGSERIAL PRIMARY KEY,
-    crtr_period     VARCHAR(8)    NOT NULL,
-    period_type     VARCHAR(4)    NOT NULL,
-    dong_cd         VARCHAR(8),
+    crtr_period     VARCHAR(15)    NOT NULL,
+    period_type     VARCHAR(10)    NOT NULL,
+    dong_cd         VARCHAR(15),
     dong_nm         VARCHAR(20),
-    tobiz_cd        VARCHAR(4),
+    tobiz_cd        VARCHAR(10),
     tobiz_nm        VARCHAR(30),
-    frcs_sls_sz     VARCHAR(1),
+    frcs_sls_sz     VARCHAR(5),
     use_nocs_sum    BIGINT,
     use_amt_sum     BIGINT,
     min_use_nocs    INTEGER,
@@ -123,11 +123,11 @@ CREATE TABLE IF NOT EXISTS asan_media.card_biz_sales (
 CREATE TABLE IF NOT EXISTS asan_media.card_biz_open_close (
     id              BIGSERIAL PRIMARY KEY,
     crtr_ym         VARCHAR(6)    NOT NULL,
-    dong_cd         VARCHAR(8),
+    dong_cd         VARCHAR(15),
     dong_nm         VARCHAR(20),
-    tobiz_cd        VARCHAR(4),
+    tobiz_cd        VARCHAR(10),
     tobiz_nm        VARCHAR(30),
-    frcs_sls_sz     VARCHAR(1),
+    frcs_sls_sz     VARCHAR(5),
     biz_mm_cnt      INTEGER,
     frcs_cnt        INTEGER,
     fran_frcs_cnt   INTEGER,
@@ -148,8 +148,8 @@ CREATE TABLE IF NOT EXISTS asan_media.card_biz_open_close (
 CREATE TABLE IF NOT EXISTS asan_media.kcb_credit (
     id              BIGSERIAL PRIMARY KEY,
     crtr_ym         VARCHAR(6)    NOT NULL,
-    dong_cd         VARCHAR(8)    NOT NULL,
-    sx              VARCHAR(1),
+    dong_cd         VARCHAR(15)    NOT NULL,
+    sx              VARCHAR(5),
     age_dvs         INTEGER,
     nope            INTEGER,
     ml_nope         INTEGER,
@@ -177,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_kcb_dong ON asan_media.kcb_credit(dong_cd);
 -- ============================================================
 CREATE TABLE IF NOT EXISTS asan_media.tmap_od (
     id              BIGSERIAL PRIMARY KEY,
-    drv_ymd         VARCHAR(8)    NOT NULL,
+    drv_ymd         VARCHAR(15)    NOT NULL,
     frst_dptre_ctpv_nm VARCHAR(20),
     frst_dptre_sgg_nm  VARCHAR(30),
     dstn_nm         VARCHAR(100),
@@ -218,7 +218,7 @@ CREATE INDEX IF NOT EXISTS idx_tmap_dstn ON asan_media.tmap_od(dstn_dong_nm);
 CREATE TABLE IF NOT EXISTS asan_media.skt_age_outflow (
     id              BIGSERIAL PRIMARY KEY,
     crtr_ym         VARCHAR(6),
-    crtr_ymd        VARCHAR(8),
+    crtr_ymd        VARCHAR(15),
     sgg_cd          VARCHAR(5),
     outflow_sgg_cd  VARCHAR(5),
     ml_10_below     NUMERIC, ml_10_14 NUMERIC, ml_15_19 NUMERIC,
@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS asan_media.skt_dow_unique (
 CREATE TABLE IF NOT EXISTS asan_media.skt_sx_age_dong (
     id              BIGSERIAL PRIMARY KEY,
     crtr_ym         VARCHAR(6),
-    crtr_ymd        VARCHAR(8),
+    crtr_ymd        VARCHAR(15),
     dong_cd         VARCHAR(10),
     dong_nm         VARCHAR(20),
     -- 성별x연령 인구 컬럼들 (동적으로 처리)
