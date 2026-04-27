@@ -1,7 +1,8 @@
-# DB 접속 설정 - 로컬에 db_config.local.yaml로 복사해서 사용
+# DB 접속 설정
 # 회사 PC (Windows, Docker Desktop)
+# 로컬: localhost / 내부망: 10.0.9.21
 database:
-  host: localhost
+  host: 10.0.9.21
   port: 5432
   dbname: asan_media
   user: sundo
