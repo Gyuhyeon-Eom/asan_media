@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS asan_media.card_daily (
     age             INTEGER,
     sale_amt        BIGINT,
     sale_cnt        INTEGER,
-    data_type       VARCHAR(10) NOT NULL or 'MER'
+    data_type       VARCHAR(10) NOT NULL  -- 'CSTMR' or 'MER'
 );
 CREATE INDEX IF NOT EXISTS idx_card_daily_date ON asan_media.card_daily(sale_date);
 CREATE INDEX IF NOT EXISTS idx_card_daily_dong ON asan_media.card_daily(admi_cty_no);
