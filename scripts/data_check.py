@@ -12,9 +12,21 @@ pd.set_option('display.max_colwidth', 40)
 pd.set_option('display.width', 200)
 
 # 데이터 경로 (환경에 맞게 수정)
-DATA_DIR = r"C:\Users\HP\Desktop\01.데이터"
-print("데이터 경로:", DATA_DIR)
-print("하위 폴더:", [d for d in os.listdir(DATA_DIR) if os.path.isdir(os.path.join(DATA_DIR,d))] if os.path.exists(DATA_DIR) else "경로 없음")
+# 데이터 경로
+BASE_DIR = r"C:\Users\HP\IdeaProjects\sundo\asan"
+DATA_DIRS = {
+    "관광데이터랩": r"C:\Users\HP\Desktop\01.데이터",
+    "카드매출": os.path.join(BASE_DIR, "02. 카드매출 데이터", "02. 카드매출 데이터"),
+    "신용정보": os.path.join(BASE_DIR, "03. 신용정보 데이터", "03. 신용정보 데이터"),
+    "내비게이션": os.path.join(BASE_DIR, "04. 내비게이션 데이터", "04. 내비게이션 데이터"),
+    "인구": os.path.join(BASE_DIR, "01. 인구 데이터", "01. 인구 데이터"),
+}
+DATA_DIR = DATA_DIRS["관광데이터랩"]
+print("데이터 경로:")
+for name, path in DATA_DIRS.items():
+    exists = os.path.exists(path)
+    print(f"  {name}: {path} {'[OK]' if exists else '[NOT FOUND]'}")
+
 
 def read_zip_csv(zip_path, csv_name, nrows=5):
     with zipfile.ZipFile(zip_path) as zf:
@@ -31,7 +43,9 @@ def read_zip_csv(zip_path, csv_name, nrows=5):
 # ## 1. 카드매출 데이터
 # 
 
-card_zips = sorted(glob.glob(os.path.join(DATA_DIR, "**/201901.zip"), recursive=True))
+card_zips = sorted(glob.glob(os.path.join(DATA_DIRS["카드매출"], "**/*.zip"), recursive=True))
+if not card_zips:
+    card_zips = sorted(glob.glob(os.path.join(DATA_DIRS["카드매출"], "*.zip")))
 print(f"카드매출 ZIP: {len(card_zips)}개")
 if card_zips:
     with zipfile.ZipFile(card_zips[0]) as zf:
@@ -71,7 +85,9 @@ if card_zips:
 # ## 2. KCB 신용정보
 # 
 
-kcb_zips = sorted(glob.glob(os.path.join(DATA_DIR, "**/201601.zip"), recursive=True))
+kcb_zips = sorted(glob.glob(os.path.join(DATA_DIRS["신용정보"], "**/*.zip"), recursive=True))
+if not kcb_zips:
+    kcb_zips = sorted(glob.glob(os.path.join(DATA_DIRS["신용정보"], "*.zip")))
 print(f"KCB ZIP: {len(kcb_zips)}개")
 if kcb_zips:
     with zipfile.ZipFile(kcb_zips[0]) as zf:
@@ -93,7 +109,9 @@ if kcb_zips:
 # ## 3. T맵 내비게이션
 # 
 
-tmap_files = sorted(glob.glob(os.path.join(DATA_DIR, "**/as_tmap_od_*.csv"), recursive=True))
+tmap_files = sorted(glob.glob(os.path.join(DATA_DIRS["내비게이션"], "**/*.csv"), recursive=True))
+if not tmap_files:
+    tmap_files = sorted(glob.glob(os.path.join(DATA_DIRS["내비게이션"], "*.csv")))
 print(f"T맵 파일: {len(tmap_files)}개")
 if tmap_files:
     df = pd.read_csv(tmap_files[0], nrows=1000, encoding='utf-8-sig')
@@ -107,7 +125,9 @@ if tmap_files:
 # ## 4. SKT 유동인구 (대용량)
 # 
 
-skt_files = sorted(glob.glob(os.path.join(DATA_DIR, "**/AS_SKT_*"), recursive=True))
+skt_files = sorted(glob.glob(os.path.join(DATA_DIRS["인구"], "**/AS_SKT_*"), recursive=True))
+if not skt_files:
+    skt_files = sorted(glob.glob(os.path.join(DATA_DIRS["인구"], "AS_SKT_*")))
 print(f"SKT 파일: {len(skt_files)}개")
 for f in skt_files:
     sz = os.path.getsize(f)/(1024**3)
@@ -131,9 +151,9 @@ for f in skt_files[:4]:
 # ## 5. 인구 데이터
 # 
 
-pop_files = sorted(glob.glob(os.path.join(DATA_DIR, "**/AS_*POP*"), recursive=True))
-pop_files += sorted(glob.glob(os.path.join(DATA_DIR, "**/*PPLTN*"), recursive=True))
-pop_files += sorted(glob.glob(os.path.join(DATA_DIR, "**/*인구*"), recursive=True))
+pop_files = sorted(glob.glob(os.path.join(DATA_DIRS["인구"], "**/*"), recursive=True))
+# 인구 폴더 전체
+
 pop_files = list(set(pop_files))
 
 print(f"인구 관련 파일: {len(pop_files)}개")
@@ -157,7 +177,7 @@ for f in pop_files[:3]:
 # 
 
 all_files = []
-for root, dirs, files in os.walk(DATA_DIR):
+for root, dirs, files in os.walk(BASE_DIR):
     for f in files:
         fp = os.path.join(root, f)
         all_files.append({
