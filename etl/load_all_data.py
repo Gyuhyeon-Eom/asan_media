@@ -327,10 +327,11 @@ def load_skt_small(conn):
     for fp in files:
         fname = os.path.basename(fp)
         print(f"  {fname}...", end=" ", flush=True)
+        str_cols = {"CRTR_YM": str, "CRTR_YMD": str, "SGG_CD": str, "OUTFLOW_SGG_CD": str}
         try:
-            df = pd.read_csv(fp, encoding="utf-8-sig")
+            df = pd.read_csv(fp, encoding="utf-8-sig", dtype=str_cols)
         except UnicodeDecodeError:
-            df = pd.read_csv(fp, encoding="cp949")
+            df = pd.read_csv(fp, encoding="cp949", dtype=str_cols)
         rows = []
         for _, r in df.iterrows():
             rows.append(tuple([
@@ -357,10 +358,11 @@ def load_skt_small(conn):
     for fp in files:
         fname = os.path.basename(fp)
         print(f"  {fname}...", end=" ", flush=True)
+        str_cols = {"CRTR_YM": str, "SGG_CD": str, "INFLOW_SGG_CD": str}
         try:
-            df = pd.read_csv(fp, encoding="utf-8-sig")
+            df = pd.read_csv(fp, encoding="utf-8-sig", dtype=str_cols)
         except UnicodeDecodeError:
-            df = pd.read_csv(fp, encoding="cp949")
+            df = pd.read_csv(fp, encoding="cp949", dtype=str_cols)
         rows = []
         for _, r in df.iterrows():
             rows.append((
