@@ -63,7 +63,10 @@ def load_card_daily(conn):
         dtype = "CSTMR" if "CSTMR" in fname else "MER"
         print(f"  {fname}...", end=" ", flush=True)
 
-        df = pd.read_csv(fp, encoding="utf-8-sig", dtype=str)
+        try:
+            df = pd.read_csv(fp, encoding="utf-8-sig", dtype=str)
+        except UnicodeDecodeError:
+            df = pd.read_csv(fp, encoding="cp949", dtype=str)
         rows = []
         for _, r in df.iterrows():
             rows.append((
@@ -197,7 +200,10 @@ def load_tmap(conn):
         fname = os.path.basename(fp)
         print(f"  {fname}...", end=" ", flush=True)
 
-        df = pd.read_csv(fp, encoding="utf-8-sig", dtype=str)
+        try:
+            df = pd.read_csv(fp, encoding="utf-8-sig", dtype=str)
+        except UnicodeDecodeError:
+            df = pd.read_csv(fp, encoding="cp949", dtype=str)
         rows = []
         for _, r in df.iterrows():
             rows.append((
@@ -266,9 +272,15 @@ def load_kcb(conn):
             if src_type == "zip":
                 with zipfile.ZipFile(path) as zf:
                     with zf.open(name) as f:
-                        df = pd.read_csv(f, encoding="utf-8-sig", dtype=str, nrows=None)
+                        try:
+                            df = pd.read_csv(f, encoding="utf-8-sig", dtype=str, nrows=None)
+                        except UnicodeDecodeError:
+                            df = pd.read_csv(f, encoding="cp949", dtype=str, nrows=None)
             else:
-                df = pd.read_csv(path, encoding="utf-8-sig", dtype=str)
+                try:
+                    df = pd.read_csv(path, encoding="utf-8-sig", dtype=str)
+                except UnicodeDecodeError:
+                    df = pd.read_csv(path, encoding="cp949", dtype=str)
         except:
             print("읽기 실패"); continue
 
@@ -315,7 +327,10 @@ def load_skt_small(conn):
     for fp in files:
         fname = os.path.basename(fp)
         print(f"  {fname}...", end=" ", flush=True)
-        df = pd.read_csv(fp, encoding="utf-8-sig")
+        try:
+            df = pd.read_csv(fp, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            df = pd.read_csv(fp, encoding="cp949")
         rows = []
         for _, r in df.iterrows():
             rows.append(tuple([
@@ -342,7 +357,10 @@ def load_skt_small(conn):
     for fp in files:
         fname = os.path.basename(fp)
         print(f"  {fname}...", end=" ", flush=True)
-        df = pd.read_csv(fp, encoding="utf-8-sig")
+        try:
+            df = pd.read_csv(fp, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            df = pd.read_csv(fp, encoding="cp949")
         rows = []
         for _, r in df.iterrows():
             rows.append((
