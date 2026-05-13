@@ -154,15 +154,16 @@ def naver_datalab_search(keywords, start_date, end_date, time_unit="date"):
 # 3. YouTube Data API - 영상 검색 & 댓글
 # ============================================================
 
-def youtube_search(query, published_after, published_before, max_results=50):
-    """YouTube 영상 검색"""
+def youtube_search(query, published_after, published_before, max_results=500):
+    """YouTube 영상 검색 (최대 500개까지 페이지네이션)"""
     if not YOUTUBE_API_KEY:
         print("  [!] YOUTUBE_API_KEY 미설정")
-        return []
+        return [], 0
 
     url = "https://www.googleapis.com/youtube/v3/search"
     all_items = []
     page_token = None
+    total_results = 0
 
     while len(all_items) < max_results:
         params = {
@@ -182,6 +183,9 @@ def youtube_search(query, published_after, published_before, max_results=50):
             resp = requests.get(url, params=params, timeout=10)
             resp.raise_for_status()
             data = resp.json()
+            page_info = data.get("pageInfo", {})
+            if total_results == 0:
+                total_results = page_info.get("totalResults", 0)
             items = data.get("items", [])
             all_items.extend(items)
             page_token = data.get("nextPageToken")
@@ -192,7 +196,7 @@ def youtube_search(query, published_after, published_before, max_results=50):
             print(f"  [!] YouTube 검색 에러: {e}")
             break
 
-    return all_items
+    return all_items, total_results
 
 
 def youtube_video_stats(video_ids):
@@ -337,12 +341,12 @@ def collect_buzz_for_broadcast(bc):
     # --- YouTube ---
     if YOUTUBE_API_KEY:
         print("  [YouTube]")
-        # 방송 전후 영상 검색
+        # 방송 전후 영상 검색 (최대 500개 페이지네이션)
         for period, pstart, pend in [
             ("pre", pre_str, bc["air_date"]),
             ("post", bc["air_date"], post_str),
         ]:
-            videos = youtube_search(name, pstart, pend, max_results=50)
+            videos, yt_total = youtube_search(name, pstart, pend, max_results=500)
             video_ids = [v["id"]["videoId"] for v in videos if "videoId" in v.get("id", {})]
 
             if video_ids:
@@ -350,8 +354,9 @@ def collect_buzz_for_broadcast(bc):
                 total_views = sum(s["views"] for s in stats.values())
                 total_videos = len(stats)
                 result[f"yt_{period}_videos"] = total_videos
+                result[f"yt_{period}_total_estimated"] = yt_total  # API 추정 총건수
                 result[f"yt_{period}_views"] = total_views
-                print(f"    {period}: {total_videos}개 영상, 총 {total_views:,} 조회")
+                print(f"    {period}: {total_videos}개 수집 (API추정 {yt_total}개), 총 {total_views:,} 조회")
 
                 # 상위 5개 영상 댓글 수집
                 top_videos = sorted(stats.items(), key=lambda x: x[1]["views"], reverse=True)[:5]
@@ -363,12 +368,13 @@ def collect_buzz_for_broadcast(bc):
                 print(f"    댓글 {len(all_comments)}건 수집")
             else:
                 result[f"yt_{period}_videos"] = 0
+                result[f"yt_{period}_total_estimated"] = yt_total
                 result[f"yt_{period}_views"] = 0
 
             time.sleep(0.5)
 
         # "아산 여행" 일반 키워드도
-        asan_videos = youtube_search("아산 여행", pre_str, post_str, max_results=50)
+        asan_videos, _ = youtube_search("아산 여행", pre_str, post_str, max_results=500)
         asan_ids = [v["id"]["videoId"] for v in asan_videos if "videoId" in v.get("id", {})]
         if asan_ids:
             asan_stats = youtube_video_stats(asan_ids)
@@ -406,6 +412,7 @@ for bc in BROADCASTS:
     # YouTube
     for period in ["pre", "post"]:
         row[f"yt_{period}_videos"] = buzz.get(f"yt_{period}_videos", 0)
+        row[f"yt_{period}_total_estimated"] = buzz.get(f"yt_{period}_total_estimated", 0)
         row[f"yt_{period}_views"] = buzz.get(f"yt_{period}_views", 0)
 
     summary_rows.append(row)
