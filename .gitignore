@@ -12,6 +12,8 @@ venv/
 # Local config
 config/*.local.yaml
 config/*.local.yml
+.env
+scripts/.env
 
 # Data files (데이터는 별도 관리)
 *.zip
