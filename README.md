@@ -1,84 +1,53 @@
 # 아산시 방송 홍보 효과 분석
 
-## 구조
+방송 프로그램 7건의 홍보 효과를 다각도로 분석하는 파이프라인.
 
+## 분석 대상 방송
+| 방송명 | 방송사 | 방영일 | 시청률 |
+|--------|--------|--------|--------|
+| 전국노래자랑 | KBS1 | 2025-06-08 | 6.5% |
+| 전현무계획2 | MBN | 2025-11-07 | 1.5% |
+| 굿모닝대한민국 | KBS2 | 2025-11-12 | 0.55% |
+| 6시내고향 | KBS1 | 2025-11-13 | 5.5% |
+| 같이삽시다3 | KBS2 | 2025-11-24 | 3.0% |
+| 뛰어야산다2 | MBN | 2026-01-12 | 1.5% |
+| 황제파워 | SBS FM | 2026-05-09 | - |
+
+## 파이프라인 구조
 ```
-analysis/
-  config.py              # 설정 (경로, 방송 이벤트, 업종 코드 등)
-  utils.py               # 공통 유틸리티
-  step1_card_baseline.py  # 카드매출 베이스라인 구축
-  step2_tmap_tourism.py   # T맵 관광지 방문 분석
-  step3_causal_inference.py  # 인과추론 (STL/DID/CausalImpact)
-  step4_visualization.py  # 시각화
-  step5_economic_impact.py  # 경제적 파급효과 산출
-  run_all.py              # 전체 실행
+Step 1: 카드매출 베이스라인 (아산페이)
+Step 2: T맵 관광지 방문 분석
+Step 3: 인과추론 (DID)
+Step 4: 시각화
+Step 5: 경제적 파급효과
+Step 6: 온라인 버즈 (네이버 블로그/뉴스 + DataLab + YouTube)
+Step 7: 교란요소 (날씨/공휴일/시즌/이벤트)
+Step 8: 종합 PDF 리포트
 ```
 
-## 실행 방법
-
+## 설치 & 실행
 ```bash
-# 1. 필수 패키지 설치
-pip install pandas numpy matplotlib tqdm statsmodels
-
-# 2. 선택 패키지 (CausalImpact)
-pip install causalimpact
-
-# 3. 전체 실행
-cd analysis
-python run_all.py
-
-# 또는 단계별 실행
-python step1_card_baseline.py
-python step2_tmap_tourism.py
-python step3_causal_inference.py
-python step4_visualization.py
-python step5_economic_impact.py
+pip install -r requirements.txt
+cp .env.example .env  # API 키 설정
+python run_all.py      # 전체 실행
 ```
 
-## 경로 설정
+개별 step 실행:
+```bash
+python step6_online_buzz.py   # 온라인 버즈만
+python step7_confounders.py   # 교란요소만
+python step8_final_report.py  # 리포트만
+```
 
-`config.py`에서 회사 PC 경로를 확인:
-- `DATA_DIR`: 원본 데이터 (C:\Users\HP\Desktop\01.데이터)
-- `OUTPUT_DIR`: 결과 저장 (C:\Users\HP\Desktop\02.분석결과)
+## 데이터 소스
+- **T맵**: 관광지 목적지 검색 (2019~2026)
+- **SKT**: 읍면동별 유동인구 (2026-01~02)
+- **아산페이**: 카드매출 (2026-01~02)
+- **네이버**: 블로그/뉴스 검색 API + DataLab 검색 트렌드
+- **YouTube**: Data API v3 (영상/댓글)
+- **날씨**: Open-Meteo (무료, API키 불필요)
+- **공휴일/이벤트**: 수동 정의 (config.py)
 
-## 분석 방법론
-
-### 1. 베이스라인 구축 (Step 1-2)
-- 카드매출 외지인 소비 시계열 (2019~)
-- T맵 관광지 방문 시계열 (2019~)
-- 읍면동/업종/출발지별 세분화
-
-### 2. 교란변수 제거 (Step 3)
-- STL 계절 분해 -> 계절성 제거 후 잔차에서 이상치 탐지
-- DID (이중차분법) -> 방송 노출 vs 미노출 읍면동 비교
-- CausalImpact -> "방송이 없었다면" 합성 시나리오와 비교
-
-### 3. 경제효과 환산 (Step 5)
-- 순수 방문객 증가 x 1인당 관광소비 = 직접 효과
-- 산업연관 승수 적용 -> 총 경제효과
-- 프로그램별 ROI
-
-## 산출물
-
-### CSV
-| 파일 | 내용 |
-|-----|------|
-| card_outsider_by_dong_monthly.csv | 읍면동별 외지인 월별 매출 |
-| card_outsider_daily.csv | 일별 외지인 매출 |
-| card_did_panel_monthly.csv | DID용 처치/대조군 패널 |
-| card_outsider_origin_monthly.csv | 출발지별 유입 소비 |
-| tmap_poi_daily.csv | 관광지별 일별 방문 |
-| tmap_poi_origin_daily.csv | 관광지별 출발지 방문 |
-| tmap_broadcast_effect_summary.csv | 방송 전후 비교 요약 |
-| did_results.csv | DID 인과추론 결과 |
-| economic_impact_by_broadcast.csv | 프로그램별 경제효과 |
-
-### 차트
-| 파일 | 내용 |
-|-----|------|
-| fig_card_timeline.png | 외지인 매출 + 방송 타임라인 |
-| fig_tmap_timeline.png | T맵 관광 방문 + 방송 타임라인 |
-| fig_pre_post_comparison.png | 방송 전후 비교 바 차트 |
-| fig_poi_timeseries.png | 관광지별 시계열 |
-| fig_stl_decomposition.png | STL 계절 분해 |
-| fig_origin_heatmap.png | 출발지 히트맵 |
+## 설정
+- `config.py`: 경로, 방송 이벤트, 관광지 매핑
+- `.env`: API 키 (git 제외)
