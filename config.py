@@ -7,9 +7,19 @@ import os
 from pathlib import Path
 
 # ============================================================
-# 데이터 경로 (회사 PC 기준)
+# 데이터 경로 (OS별 자동 감지)
 # ============================================================
-DATA_DIR = Path(r"C:\Users\HP\Desktop\01.데이터")
+import platform
+
+if platform.system() == "Windows":
+    DATA_DIR = Path(r"C:\Users\HP\Desktop\01.데이터")
+    OUTPUT_DIR = Path(r"C:\Users\HP\Desktop\02.분석결과")
+else:
+    # macOS / Linux (맥미니 등)
+    _analysis_dir = Path(__file__).parent
+    DATA_DIR = _analysis_dir / "data"
+    OUTPUT_DIR = _analysis_dir / "output"
+
 CARD_DIR = DATA_DIR / "02. 카드매출 데이터"
 KCB_DIR = DATA_DIR / "03. 신용정보 데이터"
 TMAP_DIR = DATA_DIR / "04. 내비게이션 데이터"
@@ -17,7 +27,7 @@ POP_DIR = DATA_DIR / "01. 인구 데이터"
 VISIT_DIR = DATA_DIR / "지역별 방문자수"
 SPEND_DIR = DATA_DIR / "지역별 관광지출액"
 
-OUTPUT_DIR = Path(r"C:\Users\HP\Desktop\02.분석결과")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
