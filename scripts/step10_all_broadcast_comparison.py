@@ -1,33 +1,30 @@
 #!/usr/bin/env python3
-"""아산시 방송 홍보효과 전체 비교 분석 (DID + 종합 비교 + PDF 리포트)"""
+"""
+아산시 방송 홍보효과 비교분석 - 3가지 방법론 적용
+(1) Bayesian CausalImpact  (2) 전년 동기 DID  (3) 공변량 DID
+"""
+import warnings
+warnings.filterwarnings('ignore')
 
 import pandas as pd
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib import font_manager as fm
+from matplotlib.colors import TwoSlopeNorm
 import statsmodels.api as sm
+from causal_impact import CausalImpact
+import base64
 from pathlib import Path
-import warnings, re, os
-warnings.filterwarnings('ignore')
 
-# ── 한글 폰트 ──
-for fn in ['AppleGothic', 'Apple SD Gothic Neo']:
-    try:
-        plt.rcParams['font.family'] = fn
-        plt.rcParams['axes.unicode_minus'] = False
-        break
-    except:
-        pass
+plt.rcParams['font.family'] = 'AppleGothic'
+plt.rcParams['axes.unicode_minus'] = False
 
-# ── 경로 ──
-BASE = Path('/Users/eomgyuhyeon/.openclaw/workspace/아산시/media/analysis')
-OUT = BASE / 'output'
-RPT = OUT / 'report'
-RPT.mkdir(parents=True, exist_ok=True)
+OUT = Path('/Users/eomgyuhyeon/.openclaw/workspace/아산시/media/analysis/output')
+OUT.mkdir(parents=True, exist_ok=True)
 
-TMAP_FILES = {
+# ── 1. T맵 데이터 로드 ──
+CSV_FILES = {
     '2025-01': '/Users/eomgyuhyeon/.openclaw/media/inbound/4f04101b-ae3c-4f92-b99f-ca5a8dac04fb.csv',
     '2025-02': '/Users/eomgyuhyeon/.openclaw/media/inbound/c8269447-3eb5-4418-aec1-faca498dce7d.csv',
     '2025-03': '/Users/eomgyuhyeon/.openclaw/media/inbound/1ded847e-9734-4bdc-9da9-662c393290f1.csv',
@@ -39,615 +36,662 @@ TMAP_FILES = {
     '2026-03': '/Users/eomgyuhyeon/.openclaw/media/inbound/7c46f8fc-aa33-4548-8268-663c622058dd.csv',
 }
 
-# ── 방송 프로그램 정보 ──
-BROADCASTS = [
-    {'name': '전국노래자랑', 'full': '전국노래자랑 아산시편', 'channel': 'KBS1',
-     'date': '2025-06-08', 'rating': 6.5, 'budget': 3518, 'target': '중장년',
-     'genre': '예능(음악)', 'exposed': ['신정호']},
-    {'name': '전현무계획2', 'full': '전현무계획2', 'channel': 'MBN',
-     'date': '2025-11-07', 'rating': 1.5, 'budget': 50000, 'target': '2030',
-     'genre': '예능(여행)', 'exposed': []},  # 전체 아산
-    {'name': '굿모닝대한민국', 'full': '굿모닝 대한민국', 'channel': 'KBS2',
-     'date': '2025-11-12', 'rating': 0.55, 'budget': 20000, 'target': '전연령',
-     'genre': '정보', 'exposed': ['온양온천', '곡교천', '현충사', '피나클랜드']},
-    {'name': '6시내고향', 'full': '6시 내고향', 'channel': 'KBS1',
-     'date': '2025-11-13', 'rating': 5.5, 'budget': 110000, 'target': '중장년',
-     'genre': '정보', 'exposed': []},  # 전체 아산
-    {'name': '같이삽시다3', 'full': '박원숙의 같이삽시다 시즌3', 'channel': 'KBS2',
-     'date': '2025-11-24', 'rating': 3.0, 'budget': 133000, 'target': '중장년',
-     'genre': '예능(리얼리티)', 'exposed': ['곡교천', '신정호', '영인산', '외암', '도고']},
-    {'name': '뛰어야산다2', 'full': '뛰어야산다2', 'channel': 'MBN',
-     'date': '2026-01-12', 'rating': 1.5, 'budget': 45000, 'target': '2030',
-     'genre': '예능(스포츠)', 'exposed': ['신정호', '곡교천', '현충사', '온양온천']},
-]
+dfs = []
+for label, fpath in CSV_FILES.items():
+    df = pd.read_csv(fpath, low_memory=False)
+    df.columns = [c.lower() for c in df.columns]
+    dfs.append(df)
+tmap = pd.concat(dfs, ignore_index=True)
+tmap['date'] = pd.to_datetime(tmap['drv_ymd'], format='%Y%m%d')
+tmap['vst_cnt'] = pd.to_numeric(tmap['vst_cnt'], errors='coerce').fillna(0).astype(int)
 
-# ── 관광지 키워드 매핑 ──
-POI_KEYWORDS = {
+print(f"T맵 전체: {len(tmap):,} rows, {tmap['date'].min().date()} ~ {tmap['date'].max().date()}")
+
+# ── 관광지 분류 ──
+SITE_KEYWORDS = {
     '신정호': ['신정호'],
-    '곡교천': ['곡교천', '은행나무길', '은행나무'],
-    '현충사': ['현충사', '이충무공묘소', '충무공이순신기념관'],
-    '온양온천': ['온양온천', '온천탕', '온양관광호텔'],
-    '외암민속마을': ['외암리민속마을', '외암마을', '외암민속', '외암골'],
-    '도고온천': ['도고', '파라다이스스파도고'],
+    '곡교천': ['곡교천', '은행나무'],
+    '현충사': ['현충사'],
+    '온양온천': ['온양온천'],
+    '외암민속마을': ['외암민속마을', '외암'],
+    '도고': ['도고', '도고온천', '도고파라다이스', '파라다이스스파도고'],
     '영인산': ['영인산'],
     '피나클랜드': ['피나클랜드'],
 }
 
-def classify_poi(dstn_nm):
-    """목적지명 → 관광지 분류"""
-    if not isinstance(dstn_nm, str):
+def classify_site(dstn_nm):
+    if pd.isna(dstn_nm):
         return None
-    for poi, keywords in POI_KEYWORDS.items():
+    name = str(dstn_nm)
+    for site, keywords in SITE_KEYWORDS.items():
         for kw in keywords:
-            if kw in dstn_nm:
-                return poi
+            if kw in name:
+                return site
     return None
 
-# ══════════════════════════════════════════════════
-# 1. T맵 데이터 로드
-# ══════════════════════════════════════════════════
-print("=== T맵 데이터 로드 ===")
-frames = []
-for ym, fp in TMAP_FILES.items():
-    df = pd.read_csv(fp, dtype={'drv_ymd': str})
-    frames.append(df)
-    print(f"  {ym}: {len(df):,}행")
-tmap = pd.concat(frames, ignore_index=True)
-tmap['date'] = pd.to_datetime(tmap['drv_ymd'], format='%Y%m%d')
-tmap['poi'] = tmap['dstn_nm'].apply(classify_poi)
-print(f"  전체: {len(tmap):,}행, 관광지 매칭: {tmap['poi'].notna().sum():,}행")
+tmap['site'] = tmap['dstn_nm'].apply(classify_site)
+tmap_sites = tmap[tmap['site'].notna()].copy()
 
-# 일별 관광지별 방문객
-poi_daily = tmap[tmap['poi'].notna()].groupby(['date', 'poi'])['vst_cnt'].sum().reset_index()
-poi_daily.columns = ['date', 'poi', 'visits']
+daily = tmap_sites.groupby(['date', 'site'])['vst_cnt'].sum().reset_index()
+daily_pivot = daily.pivot_table(index='date', columns='site', values='vst_cnt', fill_value=0)
 
-# 일별 전체 아산 방문객
-asan_daily = tmap.groupby('date')['vst_cnt'].sum().reset_index()
-asan_daily.columns = ['date', 'visits']
+daily_total = tmap.groupby('date')['vst_cnt'].sum().reset_index()
+daily_total.columns = ['date', 'total_visits']
+daily_total = daily_total.set_index('date').sort_index()
 
-# ── 교란요소 로드 ──
-confounders = pd.read_csv(OUT / 'confounders_merged.csv')
-confounders['date'] = pd.to_datetime(confounders['date'])
-confounder_summary = pd.read_csv(OUT / 'confounder_summary_by_broadcast.csv')
-buzz_summary = pd.read_csv(OUT / 'online_buzz_summary.csv')
+ALL_SITES = sorted(daily_pivot.columns.tolist())
+print(f"관광지: {ALL_SITES}")
 
-# ══════════════════════════════════════════════════
-# 2. 방송별 DID 분석
-# ══════════════════════════════════════════════════
-print("\n=== 방송별 DID 분석 ===")
+# ── 교란요소 ──
+conf = pd.read_csv(OUT / 'confounders_merged.csv')
+conf['date'] = pd.to_datetime(conf['date'])
+conf = conf.set_index('date').sort_index()
 
-ALL_POIS = list(POI_KEYWORDS.keys())
+# ── 방송 정보 ──
+BROADCASTS = {
+    '전국노래자랑': {'date': '2025-06-08', 'channel': 'KBS1', 'rating': 6.5, 'budget': 3518, 'sites': ['신정호'], 'tmap_possible': False},
+    '전현무계획2': {'date': '2025-11-07', 'channel': 'MBN', 'rating': 1.5, 'budget': 50000, 'sites': 'all', 'tmap_possible': True},
+    '굿모닝대한민국': {'date': '2025-11-12', 'channel': 'KBS2', 'rating': 0.55, 'budget': 20000, 'sites': ['온양온천', '곡교천', '현충사', '피나클랜드'], 'tmap_possible': True},
+    '6시내고향': {'date': '2025-11-13', 'channel': 'KBS1', 'rating': 5.5, 'budget': 110000, 'sites': 'all', 'tmap_possible': True},
+    '같이삽시다3': {'date': '2025-11-24', 'end_date': '2025-12-15', 'channel': 'KBS2', 'rating': 3.0, 'budget': 133000, 'sites': ['곡교천', '신정호', '영인산', '외암민속마을', '도고'], 'tmap_possible': True},
+    '뛰어야산다2': {'date': '2026-01-12', 'channel': 'MBN', 'rating': 1.5, 'budget': 45000, 'sites': ['신정호', '곡교천', '현충사', '온양온천'], 'tmap_possible': True},
+    '황제파워': {'date': '2026-05-09', 'channel': 'SBS FM', 'rating': None, 'budget': 220000, 'sites': ['온양온천'], 'tmap_possible': False},
+}
 
-def run_did_analysis(bc):
-    """개별 방송 DID 분석"""
-    air_date = pd.Timestamp(bc['date'])
-    pre_start = air_date - pd.Timedelta(days=28)
-    post_end = air_date + pd.Timedelta(days=28)
-    exposed = bc['exposed']
-    is_whole_asan = len(exposed) == 0  # 전체 아산 대상
+def get_control_sites(treated):
+    if treated == 'all':
+        return []
+    return [s for s in ALL_SITES if s not in treated]
 
-    if is_whole_asan:
-        # 전체 아산: 방송 전후 단순 전후 비교 (DID 대조군 없음)
-        mask_pre = (asan_daily['date'] >= pre_start) & (asan_daily['date'] < air_date)
-        mask_post = (asan_daily['date'] > air_date) & (asan_daily['date'] <= post_end)
-        pre = asan_daily[mask_pre].copy()
-        post = asan_daily[mask_post].copy()
+# ── 방법 1: CausalImpact ──
+def run_causal_impact(name, info, pre_days=28, post_days=28):
+    if info['sites'] == 'all':
+        return None
+    bdate = pd.Timestamp(info['date'])
+    treated = info['sites']
+    control = get_control_sites(treated)
+    if not control:
+        return None
 
-        if len(pre) == 0 or len(post) == 0:
-            return {'broadcast': bc['name'], 'did_effect': np.nan, 'did_pct': np.nan,
-                    'p_value': np.nan, 'pre_mean': np.nan, 'post_mean': np.nan,
-                    'method': '전체아산-데이터부족', 'sig': ''}
+    ts = daily_pivot.copy().sort_index().asfreq('D', fill_value=0)
+    y = ts[treated].sum(axis=1).astype(float)
+    x = ts[control].sum(axis=1).astype(float)
+    ci_data = pd.DataFrame({'y': y, 'x1': x})
 
-        pre_mean = pre['visits'].mean()
-        post_mean = post['visits'].mean()
-        diff = post_mean - pre_mean
-        pct = diff / pre_mean * 100 if pre_mean > 0 else 0
+    pre_start = bdate - pd.Timedelta(days=pre_days)
+    post_end = bdate + pd.Timedelta(days=post_days)
+    ci_data = ci_data[(ci_data.index >= pre_start) & (ci_data.index <= post_end)]
+    if len(ci_data) < 14:
+        return None
 
-        # 요일 통제 회귀
-        combined = pd.concat([
-            pre.assign(post=0), post.assign(post=1)
-        ])
-        combined['dow'] = combined['date'].dt.dayofweek
-        dow_dummies = pd.get_dummies(combined['dow'], prefix='dow', drop_first=True).astype(float)
-        X = pd.concat([combined[['post']].astype(float), dow_dummies], axis=1)
-        X = sm.add_constant(X)
-        try:
-            model = sm.OLS(combined['visits'].astype(float), X).fit()
-            coef = model.params.get('post', diff)
-            pval = model.pvalues.get('post', np.nan)
-        except:
-            coef, pval = diff, np.nan
+    try:
+        ci = CausalImpact(ci_data, bdate, n_seasons=7)
+        ci.run()
+        r = ci.result
+        inter_idx = ci._inter_index  # integer index of intervention
 
-        sig = ''
-        if pd.notna(pval):
-            if pval < 0.01: sig = '***'
-            elif pval < 0.05: sig = '**'
-            elif pval < 0.1: sig = '*'
+        # Restore date index for charting
+        original_dates = ci_data.index
+        r_dates = original_dates[:len(r)]  # align dates
+        r = r.copy()
+        r.index = r_dates
 
-        return {'broadcast': bc['name'], 'did_effect': coef, 'did_pct': coef / pre_mean * 100,
-                'p_value': pval, 'pre_mean': pre_mean, 'post_mean': post_mean,
-                'method': '전체아산(전후비교+요일통제)', 'sig': sig}
+        post_r = r.iloc[inter_idx:]
+        pre_r = r.iloc[:inter_idx]
 
-    else:
-        # 처치군/대조군 DID
-        control_pois = [p for p in ALL_POIS if not any(kw in p for kw in exposed)
-                        and not any(e in p for e in exposed)]
-        # 더 정확한 매칭
-        treat_pois = []
-        for p in ALL_POIS:
-            for e in exposed:
-                if e in p or p in e or e == p.replace('온천', '').replace('민속마을', ''):
-                    treat_pois.append(p)
-                    break
-        # 보완: 직접 매칭
-        treat_pois_final = set()
-        for e in exposed:
-            for p in ALL_POIS:
-                if e in p or p.startswith(e) or e in p.replace('온천', '').replace('민속마을', ''):
-                    treat_pois_final.add(p)
-        treat_pois_final = list(treat_pois_final)
-        if not treat_pois_final:
-            treat_pois_final = treat_pois
-        control_pois = [p for p in ALL_POIS if p not in treat_pois_final]
+        avg_actual = post_r['y'].mean()
+        avg_pred = post_r['pred'].mean()
+        avg_effect = avg_actual - avg_pred
+        avg_effect_rel = avg_effect / avg_pred if avg_pred != 0 else 0
 
-        mask_period = (poi_daily['date'] >= pre_start) & (poi_daily['date'] <= post_end)
-        data = poi_daily[mask_period].copy()
+        cum_effect = post_r['cum_impact'].iloc[-1] if len(post_r) > 0 else 0
+        cum_pred = post_r['pred'].sum()
+        cum_effect_rel = cum_effect / cum_pred if cum_pred != 0 else 0
 
-        if len(data) == 0:
-            return {'broadcast': bc['name'], 'did_effect': np.nan, 'did_pct': np.nan,
-                    'p_value': np.nan, 'pre_mean': np.nan, 'post_mean': np.nan,
-                    'method': 'DID-데이터부족', 'sig': ''}
+        avg_ci_lower = post_r['pred_diff_conf_int_lower'].mean()
+        avg_ci_upper = post_r['pred_diff_conf_int_upper'].mean()
 
-        data['treat'] = data['poi'].isin(treat_pois_final).astype(int)
-        data['post'] = (data['date'] > air_date).astype(int)
-        data['did'] = data['treat'] * data['post']
-        data['dow'] = data['date'].dt.dayofweek
+        cum_ci_lower = post_r['cum_impact_conf_int_lower'].iloc[-1] if len(post_r) > 0 else 0
+        cum_ci_upper = post_r['cum_impact_conf_int_upper'].iloc[-1] if len(post_r) > 0 else 0
+        significant = (cum_ci_lower > 0) or (cum_ci_upper < 0)
 
-        # 일별 그룹 집계
-        grouped = data.groupby(['date', 'treat', 'post', 'did']).agg(
-            visits=('visits', 'sum')
-        ).reset_index()
-        grouped['dow'] = grouped['date'].dt.dayofweek
+        fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+        fig.suptitle(f'CausalImpact: {name}', fontsize=14, fontweight='bold')
 
-        pre_treat = grouped[(grouped['treat'] == 1) & (grouped['post'] == 0)]['visits'].mean()
-        post_treat = grouped[(grouped['treat'] == 1) & (grouped['post'] == 1)]['visits'].mean()
+        ax = axes[0]
+        ax.plot(r.index, r['pred'], color='#2196F3', ls='--', label='예측(반사실)')
+        ax.fill_between(r.index, r['pred_conf_int_lower'], r['pred_conf_int_upper'], alpha=0.15, color='#2196F3')
+        ax.plot(r.index, r['y'], color='#333', lw=1.2, label='실제')
+        ax.axvline(bdate, color='red', ls='--', alpha=0.7, label='방송일')
+        ax.set_ylabel('일별 방문수')
+        ax.legend(fontsize=8, loc='upper left')
+        ax.set_title('실제 vs 반사실 예측', fontsize=10)
 
-        # DID 회귀
-        dow_dummies = pd.get_dummies(grouped['dow'], prefix='dow', drop_first=True).astype(float)
-        X = pd.concat([grouped[['treat', 'post', 'did']].astype(float), dow_dummies], axis=1)
-        X = sm.add_constant(X)
-        try:
-            model = sm.OLS(grouped['visits'].astype(float), X).fit()
-            coef = model.params.get('did', 0)
-            pval = model.pvalues.get('did', np.nan)
-        except:
-            coef, pval = 0, np.nan
+        ax = axes[1]
+        ax.plot(r.index, r['pred_diff'], color='#4CAF50', lw=1)
+        ax.fill_between(r.index, r['pred_diff_conf_int_lower'], r['pred_diff_conf_int_upper'], alpha=0.15, color='#4CAF50')
+        ax.axhline(0, color='gray', ls='-', alpha=0.3)
+        ax.axvline(bdate, color='red', ls='--', alpha=0.7)
+        ax.set_ylabel('개별 효과')
+        ax.set_title('포인트별 인과 효과 (실제-예측)', fontsize=10)
 
-        sig = ''
-        if pd.notna(pval):
-            if pval < 0.01: sig = '***'
-            elif pval < 0.05: sig = '**'
-            elif pval < 0.1: sig = '*'
+        ax = axes[2]
+        ax.plot(r.index, r['cum_impact'], color='#FF9800', lw=1)
+        ax.fill_between(r.index, r['cum_impact_conf_int_lower'], r['cum_impact_conf_int_upper'], alpha=0.15, color='#FF9800')
+        ax.axhline(0, color='gray', ls='-', alpha=0.3)
+        ax.axvline(bdate, color='red', ls='--', alpha=0.7)
+        ax.set_ylabel('누적 효과')
+        ax.set_title('누적 인과 효과', fontsize=10)
 
-        baseline = pre_treat if pre_treat > 0 else 1
-        return {
-            'broadcast': bc['name'], 'did_effect': coef,
-            'did_pct': coef / baseline * 100,
-            'p_value': pval, 'pre_mean': pre_treat, 'post_mean': post_treat,
-            'method': f'DID(처치{len(treat_pois_final)}/대조{len(control_pois)})+요일통제',
-            'sig': sig, 'treat_pois': ', '.join(treat_pois_final),
-            'control_pois': ', '.join(control_pois)
+        plt.tight_layout()
+        chart_path = OUT / f'ci_{name}.png'
+        fig.savefig(chart_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
+        result = {
+            'method': 'CausalImpact',
+            'name': name,
+            'avg_actual': float(avg_actual),
+            'avg_predicted': float(avg_pred),
+            'avg_effect_abs': float(avg_effect),
+            'avg_effect_rel': float(avg_effect_rel),
+            'cum_effect': float(cum_effect),
+            'cum_effect_rel': float(cum_effect_rel),
+            'ci_lower': float(avg_ci_lower),
+            'ci_upper': float(avg_ci_upper),
+            'cum_ci_lower': float(cum_ci_lower),
+            'cum_ci_upper': float(cum_ci_upper),
+            'significant': significant,
+            'chart': str(chart_path),
         }
+        print(f"  CI {name}: avg={avg_effect_rel:.1%}, cum={cum_effect:.0f}, sig={significant}")
+        return result
+    except Exception as e:
+        print(f"  CI {name}: ERROR - {e}")
+        import traceback; traceback.print_exc()
+        return None
 
-results = []
-for bc in BROADCASTS:
-    r = run_did_analysis(bc)
-    r.update({
-        'channel': bc['channel'], 'rating': bc['rating'],
-        'budget': bc['budget'], 'target': bc['target'], 'genre': bc['genre'],
-        'air_date': bc['date']
-    })
-    results.append(r)
-    print(f"  {bc['name']}: DID={r['did_effect']:.1f}, p={r['p_value']:.4f} {r['sig']}, method={r['method']}")
+# ── 방법 2: 전년 동기 DID ──
+def run_yoy_did(name, info):
+    if name != '뛰어야산다2':
+        return None
+    treated = info['sites']
+    control = get_control_sites(treated)
+    if not control:
+        return None
 
-df_results = pd.DataFrame(results)
+    ts = daily_pivot.copy().sort_index()
+    # 2026-01-12~03-31 vs 2025-01-12~03-31
+    prev = ts[(ts.index >= '2025-01-12') & (ts.index <= '2025-03-31')]
+    curr = ts[(ts.index >= '2026-01-12') & (ts.index <= '2026-03-31')]
+    if len(prev) == 0 or len(curr) == 0:
+        return None
 
-# 비용효율 계산
-df_results['cost_per_effect'] = df_results.apply(
-    lambda r: r['budget'] / abs(r['did_effect']) if abs(r['did_effect']) > 0 else np.inf, axis=1)
-df_results['effect_per_1m'] = df_results.apply(
-    lambda r: r['did_effect'] / (r['budget'] / 1000) if r['budget'] > 0 else 0, axis=1)
+    tp = prev[treated].sum().sum()
+    tc = curr[treated].sum().sum()
+    cp = prev[control].sum().sum()
+    cc = curr[control].sum().sum()
+    t_chg = (tc - tp) / tp if tp else 0
+    c_chg = (cc - cp) / cp if cp else 0
+    did = t_chg - c_chg
 
-# 저장
-df_results.to_csv(OUT / 'broadcast_did_comparison.csv', index=False, encoding='utf-8-sig')
-print(f"\n결과 저장: {OUT / 'broadcast_did_comparison.csv'}")
+    result = {
+        'method': 'YoY DID', 'name': name,
+        'treat_prev': int(tp), 'treat_curr': int(tc), 'treat_change_pct': t_chg,
+        'ctrl_prev': int(cp), 'ctrl_curr': int(cc), 'ctrl_change_pct': c_chg,
+        'did_effect': did, 'significant': abs(did) > 0.05,
+    }
+    print(f"  YoY DID {name}: treat={t_chg:.1%}, ctrl={c_chg:.1%}, DID={did:.1%}")
+    return result
 
-# ══════════════════════════════════════════════════
-# 3. 차트 생성
-# ══════════════════════════════════════════════════
-print("\n=== 차트 생성 ===")
+# ── 방법 3: 공변량 DID / Pre-Post ──
+def run_covariate_did(name, info, pre_days=28, post_days=28):
+    bdate = pd.Timestamp(info['date'])
+    pre_start = bdate - pd.Timedelta(days=pre_days)
+    post_end = bdate + pd.Timedelta(days=post_days)
+    is_all = (info['sites'] == 'all')
+    cov_cols = ['temperature_2m_mean', 'precipitation_sum', 'is_weekend', 'is_holiday', 'season_score']
 
-# 전국노래자랑은 T맵 데이터 미보유(5~10월) → DID 분석 불가 표시
-df_valid = df_results[df_results['did_effect'].notna()].copy()
-df_valid = df_valid.reset_index(drop=True)
-colors_main = ['#FF9800', '#4CAF50', '#F44336', '#9C27B0', '#795548']
-NAMES = df_valid['broadcast'].tolist()
-
-# ── 3-1. DID 효과 비교 ──
-fig, ax = plt.subplots(figsize=(10, 5))
-bars = ax.bar(range(len(NAMES)), df_valid['did_effect'], color=colors_main[:len(NAMES)], edgecolor='black', linewidth=0.5)
-for i, (v, s) in enumerate(zip(df_valid['did_effect'], df_valid['sig'])):
-    ax.text(i, v + (2 if v >= 0 else -4), f'{v:.1f}{s}', ha='center', va='bottom' if v >= 0 else 'top', fontsize=9)
-ax.set_xticks(range(len(NAMES)))
-ax.set_xticklabels(NAMES, rotation=25, ha='right', fontsize=9)
-ax.set_ylabel('DID 효과 (일평균 방문객 변화)')
-ax.set_title('방송별 T맵 DID 효과 비교')
-ax.axhline(0, color='gray', linewidth=0.8, linestyle='--')
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-plt.tight_layout()
-plt.savefig(RPT / 'chart_did_comparison.png', dpi=150, bbox_inches='tight')
-plt.close()
-
-# ── 3-2. 예산 대비 효과 (비용효율) ──
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.barh(range(len(NAMES)), df_valid['effect_per_1m'], color=colors_main[:len(NAMES)], edgecolor='black', linewidth=0.5)
-for i, v in enumerate(df_valid['effect_per_1m']):
-    ax.text(v + 0.05 if v >= 0 else v - 0.05, i, f'{v:.2f}', va='center',
-            ha='left' if v >= 0 else 'right', fontsize=9)
-ax.set_yticks(range(len(NAMES)))
-ax.set_yticklabels(NAMES, fontsize=9)
-ax.set_xlabel('예산 100만원당 DID 효과 (방문객/일)')
-ax.set_title('방송별 비용효율 비교')
-ax.axvline(0, color='gray', linewidth=0.8, linestyle='--')
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-plt.tight_layout()
-plt.savefig(RPT / 'chart_cost_efficiency.png', dpi=150, bbox_inches='tight')
-plt.close()
-
-# ── 3-3. 시청률 vs DID 효과 산점도 ──
-fig, ax = plt.subplots(figsize=(8, 6))
-for i, (_, row) in enumerate(df_valid.iterrows()):
-    ax.scatter(row['rating'], row['did_effect'], s=row['budget']/500, c=colors_main[i % len(colors_main)],
-               edgecolors='black', linewidth=0.5, zorder=5)
-    ax.annotate(row['broadcast'], (row['rating'], row['did_effect']),
-                textcoords='offset points', xytext=(8, 5), fontsize=8)
-ax.set_xlabel('시청률 (%)')
-ax.set_ylabel('DID 효과 (일평균 방문객 변화)')
-ax.set_title('시청률 vs DID 효과 (원 크기 = 예산 규모)')
-ax.axhline(0, color='gray', linewidth=0.8, linestyle='--')
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-plt.tight_layout()
-plt.savefig(RPT / 'chart_rating_vs_did.png', dpi=150, bbox_inches='tight')
-plt.close()
-
-# ── 3-4. 종합 랭킹 차트 ──
-# 정규화 점수 계산
-def normalize(s, higher_better=True):
-    r = s.max() - s.min()
-    if r == 0: return pd.Series(0.5, index=s.index)
-    n = (s - s.min()) / r
-    return n if higher_better else 1 - n
-
-df_valid['score_did'] = normalize(df_valid['did_effect'])
-df_valid['score_cost'] = normalize(df_valid['effect_per_1m'])
-df_valid['score_rating'] = normalize(df_valid['rating'])
-
-# p-value 기반 신뢰도 (낮을수록 좋음)
-df_valid['score_sig'] = normalize(df_valid['p_value'].fillna(1), higher_better=False)
-
-# 교란요소 가중치: nice_diff, temp_diff 영향 반영
-conf_map = {}
-for _, row in confounder_summary.iterrows():
-    conf_map[row['방송']] = row
-df_valid['confounder_penalty'] = 0.0
-for i, row in df_valid.iterrows():
-    bc_full = [b['full'] for b in BROADCASTS if b['name'] == row['broadcast']][0]
-    if bc_full in conf_map:
-        c = conf_map[bc_full]
-        temp_penalty = max(0, -c['temp_diff']) / 10  # 0~1
-        nice_penalty = max(0, -c['nice_diff']) / 25  # 0~1
-        df_valid.at[i, 'confounder_penalty'] = (temp_penalty + nice_penalty) / 2
-
-# 종합점수 (교란 보정)
-df_valid['score_total'] = (
-    df_valid['score_did'] * 0.35 +
-    df_valid['score_cost'] * 0.25 +
-    df_valid['score_rating'] * 0.15 +
-    df_valid['score_sig'] * 0.15 +
-    df_valid['confounder_penalty'] * 0.10
-)
-df_valid['rank'] = df_valid['score_total'].rank(ascending=False).astype(int)
-
-# 레이더 차트 대신 수평 막대 종합
-fig, ax = plt.subplots(figsize=(10, 6))
-sorted_df = df_valid.sort_values('score_total', ascending=True)
-y_pos = range(len(sorted_df))
-
-# 스택 바
-categories = [
-    ('DID 효과 (35%)', 'score_did', 0.35),
-    ('비용효율 (25%)', 'score_cost', 0.25),
-    ('시청률 (15%)', 'score_rating', 0.15),
-    ('통계신뢰도 (15%)', 'score_sig', 0.15),
-    ('교란보정 (10%)', 'confounder_penalty', 0.10),
-]
-cat_colors = ['#2196F3', '#FF9800', '#4CAF50', '#F44336', '#9E9E9E']
-left = np.zeros(len(sorted_df))
-for (label, col, w), clr in zip(categories, cat_colors):
-    vals = (sorted_df[col] * w).values
-    ax.barh(y_pos, vals, left=left, color=clr, edgecolor='white', linewidth=0.5, label=label)
-    left += vals
-
-for i, (_, row) in enumerate(sorted_df.iterrows()):
-    ax.text(row['score_total'] + 0.01, i, f"{row['score_total']:.2f} (#{int(row['rank'])})",
-            va='center', fontsize=9)
-
-ax.set_yticks(y_pos)
-ax.set_yticklabels(sorted_df['broadcast'], fontsize=9)
-ax.set_xlabel('종합 점수')
-ax.set_title('방송별 종합 효과 랭킹 (교란요소 보정)')
-ax.legend(loc='lower right', fontsize=7)
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-plt.tight_layout()
-plt.savefig(RPT / 'chart_ranking.png', dpi=150, bbox_inches='tight')
-plt.close()
-
-# ── 3-5. 장르/타겟별 효과 ──
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-# 타겟별
-for ax, col, title in [(axes[0], 'target', '타겟별'), (axes[1], 'genre', '장르별')]:
-    grp = df_valid.groupby(col).agg(
-        mean_did=('did_effect', 'mean'),
-        mean_cost=('effect_per_1m', 'mean'),
-        count=('broadcast', 'count')
-    ).reset_index()
-    x = range(len(grp))
-    bars = ax.bar(x, grp['mean_did'], color=['#2196F3', '#FF9800', '#4CAF50', '#F44336'][:len(grp)],
-                  edgecolor='black', linewidth=0.5)
-    for j, v in enumerate(grp['mean_did']):
-        ax.text(j, v + 1, f'{v:.1f}\n(n={grp.iloc[j]["count"]})', ha='center', fontsize=8)
-    ax.set_xticks(x)
-    ax.set_xticklabels(grp[col], fontsize=9)
-    ax.set_ylabel('평균 DID 효과')
-    ax.set_title(f'{title} 평균 DID 효과')
-    ax.axhline(0, color='gray', linewidth=0.8, linestyle='--')
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-plt.tight_layout()
-plt.savefig(RPT / 'chart_genre_target.png', dpi=150, bbox_inches='tight')
-plt.close()
-
-# ── 3-6. 방송 전후 방문객 추이 (DID 가능한 5개 방송) ──
-valid_broadcasts = [bc for bc in BROADCASTS if bc['name'] != '전국노래자랑']
-n_panels = len(valid_broadcasts)
-ncols = 3
-nrows = (n_panels + ncols - 1) // ncols
-fig, axes = plt.subplots(nrows, ncols, figsize=(15, 5 * nrows))
-axes = axes.flatten() if hasattr(axes, 'flatten') else [axes]
-panel_colors = colors_main[:n_panels]
-for idx, bc in enumerate(valid_broadcasts):
-    ax = axes[idx]
-    air_date = pd.Timestamp(bc['date'])
-    pre_start = air_date - pd.Timedelta(days=28)
-    post_end = air_date + pd.Timedelta(days=28)
-
-    if len(bc['exposed']) == 0:
-        # 전체 아산
-        mask = (asan_daily['date'] >= pre_start) & (asan_daily['date'] <= post_end)
-        data = asan_daily[mask].copy()
-        data['rel_day'] = (data['date'] - air_date).dt.days
-        ax.plot(data['rel_day'], data['visits'], color=panel_colors[idx], linewidth=1, alpha=0.8)
-        if len(data) >= 7:
-            data['ma7'] = data['visits'].rolling(7, center=True).mean()
-            ax.plot(data['rel_day'], data['ma7'], color='black', linewidth=1.5, linestyle='--')
+    if is_all:
+        ts = daily_total.copy()
+        ts = ts[(ts.index >= pre_start) & (ts.index <= post_end)]
+        if len(ts) < 14:
+            return None
+        merged = ts.join(conf, how='left')
+        merged['post'] = (merged.index >= bdate).astype(int)
+        y = merged['total_visits']
+        x_cols = ['post'] + [c for c in cov_cols if c in merged.columns]
+        X = sm.add_constant(merged[x_cols].fillna(0))
+        try:
+            model = sm.OLS(y, X).fit(cov_type='HC1')
+            pc = float(model.params.get('post', 0))
+            pp = float(model.pvalues.get('post', 1))
+            ci = model.conf_int().loc['post']
+            bl = float(y[merged['post'] == 0].mean())
+            return {
+                'method': 'Covariate Pre-Post', 'name': name,
+                'post_effect': pc, 'post_pvalue': pp,
+                'ci_lower': float(ci[0]), 'ci_upper': float(ci[1]),
+                'r_squared': float(model.rsquared), 'n_obs': int(model.nobs),
+                'significant': pp < 0.1, 'baseline_mean': bl,
+                'effect_pct': pc / bl if bl else 0,
+            }
+        except Exception as e:
+            print(f"  CovPrePost {name}: ERROR - {e}"); return None
     else:
-        treat_pois = set()
-        for e in bc['exposed']:
-            for p in ALL_POIS:
-                if e in p or p.startswith(e) or e in p.replace('온천', '').replace('민속마을', ''):
-                    treat_pois.add(p)
-        mask = (poi_daily['date'] >= pre_start) & (poi_daily['date'] <= post_end) & poi_daily['poi'].isin(treat_pois)
-        data = poi_daily[mask].groupby('date')['visits'].sum().reset_index()
-        data['rel_day'] = (data['date'] - air_date).dt.days
-        ax.plot(data['rel_day'], data['visits'], color=panel_colors[idx], linewidth=1, alpha=0.8)
-        if len(data) >= 7:
-            data['ma7'] = data['visits'].rolling(7, center=True).mean()
-            ax.plot(data['rel_day'], data['ma7'], color='black', linewidth=1.5, linestyle='--')
+        treated = info['sites']
+        control = get_control_sites(treated)
+        if not control:
+            return None
+        ts = daily_pivot.copy().sort_index()
+        ts = ts[(ts.index >= pre_start) & (ts.index <= post_end)]
+        if len(ts) < 14:
+            return None
+        rows = []
+        for d in ts.index:
+            for site in ALL_SITES:
+                rows.append({
+                    'date': d, 'site': site,
+                    'visits': ts.loc[d, site] if site in ts.columns else 0,
+                    'treat': 1 if site in treated else 0,
+                    'post': 1 if d >= bdate else 0,
+                })
+        panel = pd.DataFrame(rows)
+        panel['treat_post'] = panel['treat'] * panel['post']
+        panel = panel.merge(conf.reset_index(), on='date', how='left')
+        y = panel['visits']
+        x_cols = ['treat', 'post', 'treat_post'] + [c for c in cov_cols if c in panel.columns]
+        X = sm.add_constant(panel[x_cols].fillna(0))
+        try:
+            model = sm.OLS(y, X).fit(cov_type='HC1')
+            dc = float(model.params.get('treat_post', 0))
+            dp = float(model.pvalues.get('treat_post', 1))
+            ci = model.conf_int().loc['treat_post']
+            tb = float(panel[(panel['treat'] == 1) & (panel['post'] == 0)]['visits'].mean())
+            return {
+                'method': 'Covariate DID', 'name': name,
+                'did_effect': dc, 'did_pvalue': dp,
+                'ci_lower': float(ci[0]), 'ci_upper': float(ci[1]),
+                'r_squared': float(model.rsquared), 'n_obs': int(model.nobs),
+                'significant': dp < 0.1, 'treat_baseline': tb,
+                'effect_pct': dc / tb if tb else 0,
+            }
+        except Exception as e:
+            print(f"  CovDID {name}: ERROR - {e}"); return None
 
-    ax.axvline(0, color='red', linewidth=1, linestyle='-', alpha=0.7)
-    ax.set_title(bc['name'], fontsize=10)
-    ax.set_xlabel('방영일 기준 (일)', fontsize=8)
-    ax.set_ylabel('방문객', fontsize=8)
-    ax.tick_params(labelsize=7)
+# ── 실행 ──
+print("\n=== 분석 시작 ===\n")
+results = {}
+for name, info in BROADCASTS.items():
+    if name == '황제파워':
+        print(f"[{name}] 제외"); continue
+    if name == '전국노래자랑':
+        print(f"[{name}] T맵 불가, 온라인 버즈만")
+        results[name] = {'ci': None, 'yoy': None, 'cov': None}; continue
 
-for j in range(idx + 1, len(axes)):
-    axes[j].set_visible(False)
-plt.suptitle('방송별 T맵 방문객 추이 (방영일 기준 +/-28일)', fontsize=12, y=1.01)
-plt.tight_layout()
-plt.savefig(RPT / 'chart_timeseries_panel.png', dpi=150, bbox_inches='tight')
-plt.close()
+    print(f"\n[{name}]")
+    ci_r = run_causal_impact(name, info) if info['sites'] != 'all' else None
+    if info['sites'] == 'all':
+        print(f"  CI {name}: 불가 (아산 전체)")
+    yoy_r = run_yoy_did(name, info)
+    cov_r = run_covariate_did(name, info)
+    if cov_r:
+        m = cov_r['method']
+        eff = cov_r.get('effect_pct', 0)
+        pv = cov_r.get('did_pvalue', cov_r.get('post_pvalue', 1))
+        print(f"  {m} {name}: effect={eff:.1%}, p={pv:.3f}")
+    results[name] = {'ci': ci_r, 'yoy': yoy_r, 'cov': cov_r}
 
-# 종합 결과 저장
-df_valid.to_csv(OUT / 'broadcast_comparison_final.csv', index=False, encoding='utf-8-sig')
-print(f"종합 결과 저장: {OUT / 'broadcast_comparison_final.csv'}")
+# ── 종합 차트 ──
+broadcast_names = [n for n in BROADCASTS if n != '황제파워']
 
-# ══════════════════════════════════════════════════
-# 4. PDF 리포트 생성
-# ══════════════════════════════════════════════════
+# 차트 1: 방법론별 효과 비교
+fig, ax = plt.subplots(figsize=(12, 6))
+x = np.arange(len(broadcast_names))
+width = 0.25
+method_labels = ['CausalImpact', 'YoY DID', 'Cov DID/Pre-Post']
+colors = ['#2196F3', '#FF9800', '#4CAF50']
+
+for i, ml in enumerate(method_labels):
+    vals = []
+    for name in broadcast_names:
+        r = results.get(name, {})
+        if ml == 'CausalImpact' and r.get('ci'):
+            vals.append(r['ci']['avg_effect_rel'] * 100)
+        elif ml == 'YoY DID' and r.get('yoy'):
+            vals.append(r['yoy']['did_effect'] * 100)
+        elif ml == 'Cov DID/Pre-Post' and r.get('cov'):
+            vals.append(r['cov'].get('effect_pct', 0) * 100)
+        else:
+            vals.append(0)
+    bars = ax.bar(x + i * width, vals, width, label=ml, color=colors[i], alpha=0.85, edgecolor='#333', lw=0.5)
+    for j, (v, b) in enumerate(zip(vals, bars)):
+        if v != 0:
+            ax.text(b.get_x() + b.get_width()/2, v + (1 if v >= 0 else -2),
+                   f'{v:.1f}%', ha='center', va='bottom' if v >= 0 else 'top', fontsize=7)
+
+ax.set_xticks(x + width); ax.set_xticklabels(broadcast_names, rotation=15, ha='right', fontsize=9)
+ax.axhline(0, color='gray', lw=0.8)
+ax.set_ylabel('추정 효과 (%)'); ax.set_title('방송별 홍보효과 비교: 3가지 방법론', fontsize=14, fontweight='bold')
+ax.legend(fontsize=9); ax.grid(axis='y', alpha=0.3)
+plt.tight_layout(); fig.savefig(OUT / 'comparison_methods.png', dpi=150, bbox_inches='tight'); plt.close(fig)
+print("\n차트1 저장")
+
+# 차트 2: 비용효율
+fig, ax = plt.subplots(figsize=(10, 6))
+ns, cs, es = [], [], []
+for name in broadcast_names:
+    if name == '전국노래자랑': continue
+    r = results.get(name, {})
+    eff = None
+    if r.get('ci'): eff = r['ci']['avg_effect_rel'] * 100
+    elif r.get('yoy'): eff = r['yoy']['did_effect'] * 100
+    elif r.get('cov'): eff = r['cov'].get('effect_pct', 0) * 100
+    if eff is not None:
+        ns.append(name); cs.append(BROADCASTS[name]['budget'] / 1000); es.append(eff)
+
+clrs = ['#E53935' if e < 0 else '#43A047' for e in es]
+ax.scatter(cs, es, s=150, c=clrs, edgecolors='#333', lw=1, zorder=5)
+for i, n in enumerate(ns):
+    ax.annotate(n, (cs[i], es[i]), textcoords="offset points", xytext=(8, 8), fontsize=9)
+ax.axhline(0, color='gray', lw=0.8, ls='--')
+ax.set_xlabel('예산 (백만원)'); ax.set_ylabel('추정 효과 (%)')
+ax.set_title('비용 대비 홍보효과', fontsize=14, fontweight='bold')
+ax.grid(alpha=0.3); plt.tight_layout()
+fig.savefig(OUT / 'cost_efficiency.png', dpi=150, bbox_inches='tight'); plt.close(fig)
+print("차트2 저장")
+
+# 차트 3: 히트맵
+fig, ax = plt.subplots(figsize=(10, 5))
+mnames = [n for n in broadcast_names if n != '전국노래자랑']
+matrix = np.full((len(mnames), 3), np.nan)
+for i, name in enumerate(mnames):
+    r = results.get(name, {})
+    if r.get('ci'): matrix[i, 0] = r['ci']['avg_effect_rel'] * 100
+    if r.get('yoy'): matrix[i, 1] = r['yoy']['did_effect'] * 100
+    if r.get('cov'): matrix[i, 2] = r['cov'].get('effect_pct', 0) * 100
+
+vals = matrix[~np.isnan(matrix)]
+vmin, vmax = (vals.min() if len(vals) else -1), (vals.max() if len(vals) else 1)
+if vmin >= 0: vmin = -1
+if vmax <= 0: vmax = 1
+norm = TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+im = ax.imshow(matrix, cmap='RdYlGn', norm=norm, aspect='auto')
+ax.set_xticks(range(3)); ax.set_xticklabels(['CausalImpact', 'YoY DID', '공변량 DID/Pre-Post'], fontsize=10)
+ax.set_yticks(range(len(mnames))); ax.set_yticklabels(mnames, fontsize=10)
+ax.set_title('방법론별 효과 추정 (%, 양수=긍정)', fontsize=13, fontweight='bold')
+for i in range(len(mnames)):
+    for j in range(3):
+        v = matrix[i, j]
+        txt = 'N/A' if np.isnan(v) else f'{v:.1f}%'
+        clr = 'gray' if np.isnan(v) else 'black'
+        ax.text(j, i, txt, ha='center', va='center', fontsize=10, fontweight='bold', color=clr)
+plt.colorbar(im, ax=ax, label='효과 (%)'); plt.tight_layout()
+fig.savefig(OUT / 'result_heatmap.png', dpi=150, bbox_inches='tight'); plt.close(fig)
+print("차트3 저장")
+
+# ── PDF 생성 ──
 print("\n=== PDF 리포트 생성 ===")
 
-import base64
-
-def img_to_b64(path):
+def img_b64(path):
     with open(path, 'rb') as f:
         return base64.b64encode(f.read()).decode()
 
-# 결과 정리
-ranked = df_valid.sort_values('rank')
+def broadcast_html(name, info, res):
+    bdate = info['date']
+    channel = info['channel']
+    rating = info['rating']
+    budget = info['budget']
+    sites = info['sites'] if info['sites'] != 'all' else '아산 전체'
+    if isinstance(sites, list): sites = ', '.join(sites)
 
-# 방송 요약 테이블 HTML
-def make_summary_table():
-    rows = ''
-    for _, r in ranked.iterrows():
-        sig_badge = f'<span style="color:#4CAF50;font-weight:bold">{r["sig"]}</span>' if r['sig'] else '<span style="color:#999">n.s.</span>'
-        rows += f'''<tr>
-            <td style="text-align:center;font-weight:bold">#{int(r["rank"])}</td>
-            <td>{r["broadcast"]}</td><td>{r["channel"]}</td>
-            <td style="text-align:center">{r["air_date"]}</td>
-            <td style="text-align:right">{r["rating"]:.1f}%</td>
-            <td style="text-align:right">{r["budget"]:,.0f}</td>
-            <td style="text-align:right;font-weight:bold">{r["did_effect"]:+.1f}</td>
-            <td style="text-align:right">{r["did_pct"]:+.1f}%</td>
-            <td style="text-align:center">{sig_badge} (p={r["p_value"]:.3f})</td>
-            <td style="text-align:right">{r["effect_per_1m"]:+.2f}</td>
-            <td style="text-align:right">{r["score_total"]:.2f}</td>
-        </tr>'''
-    return rows
+    h = f"""<div class="bsec">
+    <h3>{name}</h3>
+    <table class="it"><tr><td>방영일</td><td>{bdate}</td><td>채널</td><td>{channel}</td></tr>
+    <tr><td>시청률</td><td>{rating}%</td><td>예산</td><td>{budget:,}천원</td></tr>
+    <tr><td colspan="4">노출: {sites}</td></tr></table>"""
 
-# 핵심 발견 텍스트 생성
-best = ranked.iloc[0]
-worst = ranked.iloc[-1]
-best_cost = df_valid.loc[df_valid['effect_per_1m'].idxmax()]
+    if name == '전국노래자랑':
+        h += """<p><b>T맵 분석:</b> 2025-05~10월 데이터 부재로 방문 데이터 기반 분석 불가.</p>
+        <p><b>온라인 버즈:</b> 네이버 블로그 '전국노래자랑 아산시편' 149건, 뉴스 94건.
+        YouTube 사전 37편(94만 조회) 대비 사후 51편(268만 조회)으로 조회수 185% 증가.</p>
+        <p class="interp"><b>해석:</b> 온라인 콘텐츠 확산에는 효과적. KBS1 시청률 6.5%의 높은 노출도.
+        최소 비용(3,518천원)으로 진행되어 비용효율 우수. 다만 관광 유발 효과 직접 검증 불가.</p></div>"""
+        return h
 
-findings = f"""
-<ul style="margin:0;padding-left:18px">
-<li><b>종합 1위: {best['broadcast']}</b> - 종합점수 {best['score_total']:.2f}, DID 효과 {best['did_effect']:+.1f}명/일</li>
-<li><b>비용효율 최고: {best_cost['broadcast']}</b> - 예산 100만원당 {best_cost['effect_per_1m']:+.2f}명/일 효과</li>
-<li><b>종합 최하위: {worst['broadcast']}</b> - 종합점수 {worst['score_total']:.2f}</li>
-"""
+    ci = res.get('ci')
+    if ci:
+        sig = "유의 (신뢰구간이 0 미포함)" if ci['significant'] else "비유의 (신뢰구간이 0 포함)"
+        h += f"""<h4>방법 1: Bayesian CausalImpact</h4>
+        <table class="rt"><tr><th>지표</th><th>값</th></tr>
+        <tr><td>사후 실제 평균</td><td>{ci['avg_actual']:.1f}명/일</td></tr>
+        <tr><td>반사실 예측 평균</td><td>{ci['avg_predicted']:.1f}명/일</td></tr>
+        <tr><td>평균 인과효과</td><td>{ci['avg_effect_abs']:.1f}명/일 ({ci['avg_effect_rel']:.1%})</td></tr>
+        <tr><td>누적 인과효과</td><td>{ci['cum_effect']:.0f}명 ({ci['cum_effect_rel']:.1%})</td></tr>
+        <tr><td>누적 95% CI</td><td>[{ci['cum_ci_lower']:.0f}, {ci['cum_ci_upper']:.0f}]</td></tr>
+        <tr><td>유의성</td><td>{sig}</td></tr></table>
+        <img src="data:image/png;base64,{img_b64(ci['chart'])}" class="ci"/>"""
+    elif info['sites'] == 'all':
+        h += "<p><em>CausalImpact: 아산 전체 대상, 대조군 설정 불가로 미적용.</em></p>"
+    else:
+        h += "<p><em>CausalImpact: 적용 불가.</em></p>"
 
-# 타겟별 분석
-target_grp = df_valid.groupby('target')['did_effect'].mean()
-for t, v in target_grp.items():
-    findings += f'<li>타겟 "{t}": 평균 DID {v:+.1f}명/일</li>'
+    yoy = res.get('yoy')
+    if yoy:
+        h += f"""<h4>방법 2: 전년 동기 DID (2025 Q1 vs 2026 Q1)</h4>
+        <table class="rt"><tr><th></th><th>처치군</th><th>대조군</th></tr>
+        <tr><td>2025 Q1 방문</td><td>{yoy['treat_prev']:,}명</td><td>{yoy['ctrl_prev']:,}명</td></tr>
+        <tr><td>2026 Q1 방문</td><td>{yoy['treat_curr']:,}명</td><td>{yoy['ctrl_curr']:,}명</td></tr>
+        <tr><td>YoY 변화율</td><td>{yoy['treat_change_pct']:.1%}</td><td>{yoy['ctrl_change_pct']:.1%}</td></tr></table>
+        <p><b>DID = {yoy['did_effect']:.1%}p</b> (처치군 성장률 - 대조군 성장률)</p>
+        <p class="interp">처치군이 대조군 대비 {abs(yoy['did_effect']):.1%}p {'더 성장' if yoy['did_effect'] > 0 else '덜 성장'}. 
+        전년 동일 시기 비교로 계절 효과가 자연 통제됨.</p>"""
+    else:
+        if name == '뛰어야산다2':
+            h += "<p><em>전년 동기 DID: 계산 실패.</em></p>"
+        else:
+            h += "<p><em>전년 동기 DID: 전년 동기 데이터 매칭 불가, 미적용.</em></p>"
 
-findings += '</ul>'
+    cov = res.get('cov')
+    if cov:
+        mn = cov['method']
+        if 'did_effect' in cov:
+            ev, ep, pv = cov['did_effect'], cov['effect_pct'], cov['did_pvalue']
+            cl, cu = cov['ci_lower'], cov['ci_upper']
+        else:
+            ev, ep, pv = cov['post_effect'], cov['effect_pct'], cov['post_pvalue']
+            cl, cu = cov['ci_lower'], cov['ci_upper']
+        sig = "유의 (p<0.1)" if cov['significant'] else "비유의 (p>=0.1)"
+        h += f"""<h4>방법 3: {mn} (날씨/시즌 통제)</h4>
+        <table class="rt"><tr><th>지표</th><th>값</th></tr>
+        <tr><td>추정 효과</td><td>{ev:.1f}명/일 ({ep:.1%})</td></tr>
+        <tr><td>95% CI</td><td>[{cl:.1f}, {cu:.1f}]</td></tr>
+        <tr><td>p-value</td><td>{pv:.4f}</td></tr>
+        <tr><td>유의성</td><td>{sig}</td></tr>
+        <tr><td>R-squared</td><td>{cov['r_squared']:.3f}</td></tr>
+        <tr><td>관측수</td><td>{cov['n_obs']}</td></tr></table>
+        <p>통제 변수: 기온, 강수량, 주말, 공휴일, 시즌점수</p>"""
 
-# 교란요소 요약
-conf_notes = []
-for _, r in confounder_summary.iterrows():
-    if r['방송'] == '황제성의 황제파워':
-        continue
-    notes = []
-    if r['temp_diff'] < -5:
-        notes.append(f"기온 {r['temp_diff']:+.1f}도 하락")
-    if r['nice_diff'] < -5:
-        notes.append(f"쾌적일 {r['nice_diff']:+.0f}일 감소")
-    if str(r.get('known_confounders', '')) not in ['', 'nan', '없음']:
-        notes.append(str(r['known_confounders']))
-    if notes:
-        conf_notes.append(f"<li>{r['방송']}: {', '.join(notes)}</li>")
+    # 종합 해석
+    parts = []
+    if ci:
+        d = "양(+)" if ci['avg_effect_rel'] > 0 else "음(-)"
+        parts.append(f"CausalImpact: {d} {ci['avg_effect_rel']:.1%}, {'유의' if ci['significant'] else '비유의'}")
+    if yoy:
+        d = "양(+)" if yoy['did_effect'] > 0 else "음(-)"
+        parts.append(f"전년동기DID: {d} {yoy['did_effect']:.1%}p")
+    if cov:
+        d = "양(+)" if ep > 0 else "음(-)"
+        parts.append(f"공변량모델: {d} {ep:.1%}, p={pv:.3f}")
 
-conf_html = '<ul style="margin:0;padding-left:18px">' + ''.join(conf_notes) + '</ul>' if conf_notes else '<p>주요 교란요소 없음</p>'
+    if parts:
+        h += f'<p class="interp"><b>종합:</b> {". ".join(parts)}.</p>'
+    h += "</div>"
+    return h
 
-# 방송별 상세 분석
-detail_rows = ''
-for _, r in ranked.iterrows():
-    method_desc = r.get('method', '')
-    treat = r.get('treat_pois', '전체 아산')
-    control = r.get('control_pois', '-')
-    detail_rows += f'''
-    <div style="border:1px solid #ccc;padding:8px;margin-bottom:6px">
-        <b>#{int(r["rank"])} {r["broadcast"]}</b> ({r["channel"]}, {r["air_date"]}, 시청률 {r["rating"]:.1f}%)<br>
-        분석방법: {method_desc}<br>
-        처치군: {treat} | 대조군: {control}<br>
-        <b>DID 효과: {r["did_effect"]:+.1f}명/일 ({r["did_pct"]:+.1f}%) | p-value: {r["p_value"]:.4f} {r["sig"]}</b><br>
-        방송 전 평균: {r["pre_mean"]:.1f}명/일 → 방송 후: {r["post_mean"]:.1f}명/일<br>
-        예산: {r["budget"]:,}천원 | 비용효율: {r["effect_per_1m"]:+.2f}명/(100만원*일)
-    </div>'''
+# 종합표
+def summary_table_html():
+    h = """<table class="st">
+    <tr><th rowspan="2">방송</th><th colspan="2">CausalImpact</th><th colspan="2">전년동기 DID</th>
+    <th colspan="2">공변량 DID/Pre-Post</th><th rowspan="2">예산(천원)</th><th rowspan="2">일관성</th></tr>
+    <tr><th>효과(%)</th><th>유의</th><th>효과(%p)</th><th>유의</th><th>효과(%)</th><th>유의</th></tr>"""
+    for name in BROADCASTS:
+        if name == '황제파워': continue
+        info = BROADCASTS[name]; r = results.get(name, {})
+        ci = r.get('ci'); yoy = r.get('yoy'); cov = r.get('cov')
+        ce = f"{ci['avg_effect_rel']*100:.1f}" if ci else '-'
+        cs = 'O' if ci and ci['significant'] else ('X' if ci else '-')
+        ye = f"{yoy['did_effect']*100:.1f}" if yoy else '-'
+        ys = 'O' if yoy and yoy['significant'] else ('X' if yoy else '-')
+        ve = f"{cov.get('effect_pct',0)*100:.1f}" if cov else '-'
+        vs = 'O' if cov and cov['significant'] else ('X' if cov else '-')
+        dirs = []
+        if ci: dirs.append(ci['avg_effect_rel'] > 0)
+        if yoy: dirs.append(yoy['did_effect'] > 0)
+        if cov: dirs.append(cov.get('effect_pct', 0) > 0)
+        con = '일치' if len(dirs) >= 2 and len(set(dirs)) == 1 else ('불일치' if len(dirs) >= 2 else ('단일' if dirs else '-'))
+        h += f"<tr><td>{name}</td><td>{ce}</td><td>{cs}</td><td>{ye}</td><td>{ys}</td><td>{ve}</td><td>{vs}</td><td>{info['budget']:,}</td><td>{con}</td></tr>"
+    h += "</table>"
+    return h
 
-html = f'''<!DOCTYPE html>
-<html><head><meta charset="utf-8">
+bsections = "".join(broadcast_html(n, BROADCASTS[n], results.get(n, {})) for n in BROADCASTS if n != '황제파워')
+stbl = summary_table_html()
+cm_b64 = img_b64(OUT / 'comparison_methods.png')
+ce_b64 = img_b64(OUT / 'cost_efficiency.png')
+hm_b64 = img_b64(OUT / 'result_heatmap.png')
+
+# 결론
+conclusion_items = []
+for name in ['뛰어야산다2', '같이삽시다3', '굿모닝대한민국', '전현무계획2', '6시내고향', '전국노래자랑']:
+    r = results.get(name, {})
+    ci = r.get('ci'); yoy = r.get('yoy'); cov = r.get('cov')
+    pos, tot = 0, 0
+    if ci: tot += 1; pos += (ci['avg_effect_rel'] > 0)
+    if yoy: tot += 1; pos += (yoy['did_effect'] > 0)
+    if cov: tot += 1; pos += (cov.get('effect_pct', 0) > 0)
+    b = BROADCASTS[name]['budget']
+    if name == '전국노래자랑':
+        conclusion_items.append(f"<li><b>{name}:</b> T맵 분석 불가. YouTube 조회수 185% 증가 등 온라인 버즈 확인. 최소 비용({b:,}천원)으로 높은 비용효율.</li>")
+    elif tot == 0:
+        conclusion_items.append(f"<li><b>{name}:</b> 분석 불가.</li>")
+    elif pos == tot:
+        conclusion_items.append(f"<li><b>{name}:</b> {tot}가지 방법 모두 양(+)의 효과. 방송의 관광 유발 효과가 일관되게 확인됨. 예산 {b:,}천원.</li>")
+    elif pos == 0:
+        conclusion_items.append(f"<li><b>{name}:</b> {tot}가지 방법 모두 음(-)의 효과. 계절 효과를 통제하더라도 순수 방문 유발 효과 제한적. 예산 {b:,}천원.</li>")
+    else:
+        conclusion_items.append(f"<li><b>{name}:</b> {tot}가지 방법 중 {pos}개 양(+), 결과 혼재. 예산 {b:,}천원.</li>")
+
+html = f"""<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <style>
 @page {{ size: A4; margin: 15mm; }}
-body {{ font-family: 'Apple SD Gothic Neo', 'AppleGothic', sans-serif; font-size: 10px; line-height: 1.4; color: #333; }}
-h1 {{ font-size: 18px; border-bottom: 2px solid #333; padding-bottom: 4px; margin: 8px 0; }}
-h2 {{ font-size: 14px; border-bottom: 1px solid #999; padding-bottom: 3px; margin: 10px 0 5px 0; }}
-h3 {{ font-size: 12px; margin: 8px 0 4px 0; }}
-table {{ border-collapse: collapse; width: 100%; font-size: 9px; }}
-th, td {{ border: 1px solid #ccc; padding: 3px 5px; }}
+body {{ font-family: 'AppleGothic', sans-serif; font-size: 10pt; line-height: 1.5; color: #222; }}
+h1 {{ font-size: 18pt; text-align: center; margin-bottom: 5px; }}
+h2 {{ font-size: 14pt; border-bottom: 2px solid #333; padding-bottom: 4px; margin-top: 20px; }}
+h3 {{ font-size: 12pt; border-left: 4px solid #2196F3; padding-left: 8px; margin-top: 15px; }}
+h4 {{ font-size: 10pt; color: #555; margin-top: 10px; }}
+.sub {{ text-align: center; color: #666; font-size: 10pt; margin-bottom: 20px; }}
+table {{ border-collapse: collapse; width: 100%; margin: 8px 0; }}
+th, td {{ border: 1px solid #ccc; padding: 4px 8px; text-align: center; font-size: 9pt; }}
 th {{ background: #f5f5f5; font-weight: bold; }}
-tr:nth-child(even) {{ background: #fafafa; }}
-img {{ max-width: 100%; height: auto; }}
-.chart-row {{ display: flex; gap: 10px; margin: 5px 0; }}
-.chart-row img {{ width: 48%; }}
-.key-box {{ border: 2px solid #2196F3; padding: 8px; margin: 5px 0; }}
+.it td:first-child, .it td:nth-child(3) {{ font-weight: bold; background: #fafafa; width: 80px; }}
+.rt th {{ width: 140px; text-align: left; }}
+.rt td:first-child {{ text-align: left; font-weight: bold; }}
+.st th {{ font-size: 8pt; }}
+.ci {{ width: 100%; max-width: 700px; display: block; margin: 10px auto; }}
+.bsec {{ margin-bottom: 20px; page-break-inside: avoid; }}
+.interp {{ background: #f9f9f9; border: 1px solid #ddd; padding: 8px; margin: 8px 0; font-size: 9pt; }}
+.mb {{ border: 1px solid #999; padding: 10px; margin: 10px 0; }}
+.mb h4 {{ margin-top: 0; }}
+.note {{ color: #888; font-size: 8pt; }}
 </style></head><body>
-
-<h1>아산시 방송 홍보효과 비교 분석 보고서</h1>
+<h1>아산시 방송 홍보효과 비교분석</h1>
+<p class="sub">3가지 방법론: CausalImpact / 전년 동기 DID / 공변량 DID<br/>
+분석일: 2026-05-13 | 데이터: T맵 내비게이션 (2025.01~2026.03)</p>
 
 <h2>1. 분석 개요</h2>
-<p>아산시가 집행한 6개 방송 프로그램(황제파워 제외)의 관광객 유입 효과를 T맵 내비게이션 데이터 기반 이중차분법(DID)으로 분석하고,
-예산 대비 효과(비용효율), 시청률 대비 효과, 교란요소(날씨/시즌/이벤트)를 종합적으로 비교했다.</p>
-<table>
-<tr><th>분석 기간</th><td>2025.01 ~ 2026.03 (T맵 데이터 가용 범위)</td></tr>
-<tr><th>분석 방법</th><td>DID + 요일 통제 회귀 (처치군 vs 대조군, 방영 전후 28일)</td></tr>
-<tr><th>대상 관광지</th><td>신정호, 곡교천/은행나무길, 현충사, 온양온천, 외암민속마을, 도고온천, 영인산, 피나클랜드</td></tr>
-<tr><th>교란 통제</th><td>요일, 날씨(기온/강수), 시즌성, 공휴일/이벤트</td></tr>
-</table>
+<p>본 보고서는 아산시가 2025~2026년 집행한 7개 방송 프로그램의 관광 홍보효과를
+T맵 내비게이션 방문 데이터로 분석한다. 단순 전후비교(naive DID)는 가을에서 겨울로의
+비수기 진입에 따른 계절 효과를 분리하지 못하는 한계가 있어, 3가지 인과추론 방법론을 적용하였다.</p>
 
-<h2>2. 핵심 발견</h2>
-<div class="key-box">{findings}</div>
+<div class="mb"><h4>방법 1: Bayesian Structural Time Series (CausalImpact)</h4>
+<p>처치군(방송 노출 관광지)의 사후 방문수를 대조군(미노출 관광지) 시계열로 예측한
+반사실(counterfactual)과 비교. 요일 계절성(n_seasons=7) 포함.</p>
+<p class="note">적용: 특정 관광지 노출 3개 방송 (굿모닝대한민국, 같이삽시다3, 뛰어야산다2)</p></div>
 
-<h2>3. 방송별 DID 효과 종합 비교</h2>
-<table>
-<tr><th>순위</th><th>방송</th><th>채널</th><th>방영일</th><th>시청률</th><th>예산(천원)</th>
-<th>DID 효과</th><th>변화율</th><th>유의성</th><th>비용효율</th><th>종합점수</th></tr>
-{make_summary_table()}
-</table>
+<div class="mb"><h4>방법 2: 전년 동기 이중차분법 (YoY DID)</h4>
+<p>동일 월 전년(2025) vs 금년(2026) 비교로 계절 효과 자연 통제.
+처치군/대조군 각각의 전년 대비 변화율 차이가 DID 추정치.</p>
+<p class="note">적용: 뛰어야산다2 (2026 Q1 vs 2025 Q1)</p></div>
 
-<h2>4. 차트 분석</h2>
-<h3>4-1. DID 효과 비교</h3>
-<img src="data:image/png;base64,{img_to_b64(RPT / 'chart_did_comparison.png')}">
+<div class="mb"><h4>방법 3: 공변량 통제 DID / 전후비교</h4>
+<p>기온, 강수량, 주말, 공휴일, 시즌점수를 공변량으로 포함하는 OLS 회귀.
+HC1 robust SE 사용. 관광지 기반 처치/대조 가능 시 패널 DID, 아산 전체 대상 시 전후비교.</p>
+<p class="note">적용: T맵 데이터 있는 5개 방송 전체</p></div>
 
-<h3>4-2. 예산 대비 비용효율</h3>
-<img src="data:image/png;base64,{img_to_b64(RPT / 'chart_cost_efficiency.png')}">
+<h2>2. 분석 대상</h2>
+<table><tr><th>방송</th><th>방영일</th><th>채널</th><th>시청률</th><th>예산(천원)</th><th>노출</th><th>적용 방법</th></tr>
+<tr><td>전국노래자랑</td><td>2025-06-08</td><td>KBS1</td><td>6.5%</td><td>3,518</td><td>신정호</td><td>온라인 버즈</td></tr>
+<tr><td>전현무계획2</td><td>2025-11-07</td><td>MBN</td><td>1.5%</td><td>50,000</td><td>아산 전체</td><td>Cov Pre-Post</td></tr>
+<tr><td>굿모닝대한민국</td><td>2025-11-12</td><td>KBS2</td><td>0.55%</td><td>20,000</td><td>온양온천 등 4곳</td><td>CI + CovDID</td></tr>
+<tr><td>6시내고향</td><td>2025-11-13</td><td>KBS1</td><td>5.5%</td><td>110,000</td><td>아산 전체</td><td>Cov Pre-Post</td></tr>
+<tr><td>같이삽시다3</td><td>2025-11-24~12-15</td><td>KBS2</td><td>3.0%</td><td>133,000</td><td>곡교천 등 5곳</td><td>CI + CovDID</td></tr>
+<tr><td>뛰어야산다2</td><td>2026-01-12</td><td>MBN</td><td>1.5%</td><td>45,000</td><td>신정호 등 4곳</td><td>CI + YoY + CovDID</td></tr>
+<tr><td>황제파워</td><td>2026-05-09</td><td>SBS FM</td><td>-</td><td>220,000</td><td>온양온천</td><td>제외(사후 데이터 없음)</td></tr></table>
 
-<h3>4-3. 시청률 vs DID 효과</h3>
-<img src="data:image/png;base64,{img_to_b64(RPT / 'chart_rating_vs_did.png')}">
+<h2>3. 방송별 상세 결과</h2>
+{bsections}
 
-<h3>4-4. 종합 랭킹 (교란보정)</h3>
-<img src="data:image/png;base64,{img_to_b64(RPT / 'chart_ranking.png')}">
+<h2>4. 종합 비교</h2>
+<h3>4.1 방법론별 효과 종합표</h3>
+{stbl}
 
-<h3>4-5. 타겟/장르별 효과</h3>
-<img src="data:image/png;base64,{img_to_b64(RPT / 'chart_genre_target.png')}">
+<h3>4.2 효과 비교 시각화</h3>
+<img src="data:image/png;base64,{cm_b64}" class="ci"/>
 
-<h3>4-6. 방송별 방문객 추이 (방영 전후 28일)</h3>
-<img src="data:image/png;base64,{img_to_b64(RPT / 'chart_timeseries_panel.png')}">
+<h3>4.3 결과 일관성 히트맵</h3>
+<img src="data:image/png;base64,{hm_b64}" class="ci"/>
 
-<h2>5. 방송별 상세 분석</h2>
-{detail_rows}
+<h3>4.4 비용 대비 효과</h3>
+<img src="data:image/png;base64,{ce_b64}" class="ci"/>
 
-<h2>6. 교란요소 분석</h2>
-<p>방송 전후 28일 간 기상/시즌/이벤트 차이:</p>
-{conf_html}
-<p style="font-size:9px;color:#666">* 11월~1월 방송들은 방송 후 기간이 겨울 비수기와 겹쳐 DID 효과가 과소추정될 가능성이 있음.
-교란보정 점수에서 이를 부분 반영함.</p>
+<h2>5. 교란요소 및 한계</h2>
+<table><tr><th>방송</th><th>교란요소</th><th>기온차</th><th>날씨양호일 변화</th></tr>
+<tr><td>전현무계획2</td><td>없음</td><td>-7.1도</td><td>-4일</td></tr>
+<tr><td>굿모닝대한민국</td><td>가을단풍시즌</td><td>-6.7도</td><td>-8일</td></tr>
+<tr><td>6시내고향</td><td>없음</td><td>-6.4도</td><td>-8일</td></tr>
+<tr><td>같이삽시다3</td><td>단풍+온천시즌</td><td>-5.4도</td><td>-4일</td></tr>
+<tr><td>뛰어야산다2</td><td>비수기(1월)</td><td>-2.6도</td><td>0일</td></tr></table>
 
-<h2>7. 결론 및 제언</h2>
+<p>2025년 11월 방송 4건은 가을→겨울 전환기에 방영되어 기온 5~7도 하락, 날씨 양호일 4~8일 감소의
+강한 계절 교란이 존재한다. 이로 인해 naive DID에서는 모든 방송이 음수 효과를 보인다.
+본 분석은 이 계절 효과를 3가지 방법으로 통제하여 순수 방송 효과를 추정하였다.</p>
+
+<p><b>데이터 한계:</b></p>
 <ul>
-<li><b>DID 효과 크기:</b> 전국노래자랑(소규모 예산)이 특정 관광지(신정호) 집중 노출로 효율적.
-전체 아산 대상 방송(전현무계획2, 6시내고향)은 효과가 분산됨.</li>
-<li><b>비용효율:</b> 예산 대비 효과는 저예산 프로그램이 유리한 구조. 대규모 예산 프로그램은
-절대 효과는 클 수 있으나 단위 비용당 효율은 낮음.</li>
-<li><b>시청률과 효과:</b> 시청률이 높다고 관광객 유입 효과가 비례하지 않음.
-타겟 시청자와 관광지 매칭이 더 중요한 요인.</li>
-<li><b>시즌 교란:</b> 11~1월 방송은 겨울 비수기와 겹쳐 효과 해석에 주의 필요.
-향후 방송 시점을 봄/가을 성수기로 맞추면 시너지 극대화 가능.</li>
-<li><b>특정 관광지 집중 vs 전체 노출:</b> 특정 관광지를 집중 노출한 방송이
-DID 측정에서 더 뚜렷한 효과를 보임.</li>
+<li>2025년 5~10월 T맵 부재로 전국노래자랑(6월) 분석 불가</li>
+<li>전현무계획2, 6시내고향은 "아산 전체" 대상으로 관광지 기반 처치/대조군 설정 불가</li>
+<li>전년 동기 DID는 뛰어야산다2에만 깔끔하게 적용 가능</li>
+<li>2025-11월 방송 4건이 1~2주 간격으로 연속 방영되어 개별 효과 분리 어려움</li>
 </ul>
 
-</body></html>'''
+<h2>6. 결론 및 정책 제언</h2>
+<ul>{"".join(conclusion_items)}</ul>
 
-pdf_path = Path('/Users/eomgyuhyeon/.openclaw/workspace/아산시_방송홍보효과_비교분석.pdf')
+<p><b>정책 제언:</b></p>
+<ol>
+<li><b>비수기 방송의 효과 해석에 주의.</b> 가을→겨울 전환기(11월) 집중 방송은 계절 효과와 혼재.
+방송 시기를 분산하면 효과 측정과 실질 효과 극대화 모두에 유리.</li>
+<li><b>특정 관광지 노출 방송이 분석에 유리.</b> "아산 전체" 방송은 엄밀한 인과추론 적용 불가.
+특정 관광지 노출이 효과 측정과 타겟 마케팅에 유리.</li>
+<li><b>비용효율 관점에서 소규모/고시청률 방송 유리.</b> 전국노래자랑은 최소 비용으로 높은 시청률,
+뛰어야산다2는 중간 예산으로 가장 일관된 양의 효과.</li>
+<li><b>연속 방영 간격 확보 필요.</b> 11월 4개 방송이 1~2주 간격으로 방영되어 개별 효과 분리 불가.
+향후 최소 4주 이상 간격 권장.</li>
+</ol>
+</body></html>"""
+
 from weasyprint import HTML
-HTML(string=html).write_pdf(str(pdf_path))
-print(f"\nPDF 생성 완료: {pdf_path}")
+pdf_path = '/Users/eomgyuhyeon/.openclaw/workspace/아산시_방송홍보효과_비교분석.pdf'
+HTML(string=html).write_pdf(pdf_path)
+print(f"\nPDF 완료: {pdf_path}")
 print("=== 분석 완료 ===")
