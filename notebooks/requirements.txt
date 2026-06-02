@@ -2,5 +2,8 @@ pandas>=2.0
 numpy>=1.24
 matplotlib>=3.7
 statsmodels>=0.14
-pycausalimpact>=0.1
+scipy>=1.10
 openpyxl>=3.1
+# pycausalimpact는 ruptures 의존성 문제 있음 → causal_utils.py로 대체
+# 아래는 pycausalimpact가 설치 가능한 환경에서만 (선택)
+# pycausalimpact>=0.1
