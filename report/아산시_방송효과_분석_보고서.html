@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>아산시 방송 홍보 효과 분석 보고서</title>
+<style>
+@page {
+  size: A4;
+  margin: 25mm 20mm;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+  color: #111;
+  line-height: 1.7;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 20px 30px;
+  font-size: 10.5pt;
+}
+h1 {
+  text-align: center;
+  font-size: 20pt;
+  border-bottom: 3px solid #111;
+  padding-bottom: 12px;
+  margin-top: 40px;
+  margin-bottom: 8px;
+}
+.subtitle {
+  text-align: center;
+  font-size: 11pt;
+  color: #333;
+  margin-bottom: 40px;
+}
+h2 {
+  font-size: 14pt;
+  border-left: 5px solid #111;
+  padding-left: 12px;
+  margin-top: 36px;
+  margin-bottom: 12px;
+}
+h3 {
+  font-size: 12pt;
+  margin-top: 24px;
+  margin-bottom: 8px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 9.5pt;
+}
+th, td {
+  border: 1px solid #333;
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+th {
+  background: #222;
+  color: #fff;
+  font-weight: bold;
+}
+tr:nth-child(even) { background: #f5f5f5; }
+.sig { font-weight: bold; }
+.pos { color: #111; font-weight: bold; }
+.neg { color: #666; }
+.note {
+  font-size: 9pt;
+  color: #444;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid #999;
+  background: #fafafa;
+}
+.summary-box {
+  border: 2px solid #111;
+  padding: 16px 20px;
+  margin: 20px 0;
+  background: #fafafa;
+}
+.summary-box h3 { margin-top: 0; }
+ul { margin: 6px 0; padding-left: 20px; }
+li { margin-bottom: 4px; }
+.page-break { page-break-before: always; }
+.toc { margin: 20px 0 40px; }
+.toc ol { line-height: 2.2; }
+.highlight-row { background: #e8e8e8 !important; font-weight: bold; }
+.right { text-align: right; }
+.left { text-align: left; }
+.caption {
+  font-size: 9pt;
+  text-align: center;
+  color: #555;
+  margin-top: -10px;
+  margin-bottom: 16px;
+}
+.watermark {
+  text-align: center;
+  font-size: 8pt;
+  color: #888;
+  margin-top: 60px;
+  border-top: 1px solid #ccc;
+  padding-top: 8px;
+}
+</style>
+</head>
+<body>
+
+<h1>아산시 방송 홍보 효과 분석 보고서</h1>
+<p class="subtitle">
+  분석 기간: 2025.01 ~ 2026.04 | 데이터: 카드매출, T맵 내비게이션, 관광데이터랩<br>
+  방법론: 이중차분(DID), CausalImpact, Staggered DID, 공간분석<br>
+  작성일: 2026.06.04
+</p>
+
+<div class="toc">
+<h3>목차</h3>
+<ol>
+  <li>분석 개요</li>
+  <li>분석 대상 방송 현황</li>
+  <li>데이터 현황</li>
+  <li>배경 추세: 아산시 전체 관광 동향</li>
+  <li>인과추론 결과
+    <ol type="a">
+      <li>T맵 DID (관광지 단위)</li>
+      <li>Placebo 검정</li>
+      <li>CausalImpact (반사실 추정)</li>
+      <li>전년동기 비교 (YoY)</li>
+      <li>Staggered DID (카드매출)</li>
+    </ol>
+  </li>
+  <li>예산 대비 성과 (ROI)</li>
+  <li>방송특성별 효과 비교</li>
+  <li>공간분석
+    <ol type="a">
+      <li>유입거리 변화</li>
+      <li>공간 파급 (Spillover)</li>
+      <li>연계 동선</li>
+    </ol>
+  </li>
+  <li>종합 평가 매트릭스</li>
+  <li>결론 및 정책 제언</li>
+</ol>
+</div>
+
+<!-- ============================================================ -->
+<h2>1. 분석 개요</h2>
+
+<p>
+본 보고서는 아산시가 2025~2026년에 집행한 <b>7건의 방송 홍보 사업</b>의 관광 유발 효과를 정량적으로 분석한 결과이다.
+단순 전후 비교가 아닌 <b>인과추론(Causal Inference)</b> 방법론을 적용하여, 방송 이외의 계절·날씨·공휴일 등
+교란요인을 통제한 순효과(net effect)를 추정하였다.
+</p>
+
+<div class="summary-box">
+<h3>핵심 결론 요약</h3>
+<ul>
+  <li><b>박원숙의 같이삽시다 시즌3</b>: T맵 DID 효과 +350건/일(p=0.01), CausalImpact +117.7%(유의) — 가장 강한 관광지 방문 효과</li>
+  <li><b>전국노래자랑 아산시편</b>: T맵 DID 효과 +183건/일(p=0.01) — 351.8만원 최소 예산 대비 높은 효과</li>
+  <li><b>뛰어야산다2</b>: 카드매출 DID 유일한 양수(+9,186만원), T맵 효과는 미미(+0.8건/일)</li>
+  <li><b>굿모닝 대한민국</b>: T맵 DID 음수(-116건/일, 비유의), 단독 효과 미검출</li>
+  <li><b>전현무계획2, 6시 내고향</b>: 특정 관광지 지목 없어 POI 단위 분석 불가, 시 전체 지표로만 측정</li>
+  <li><b>황제성의 황제파워</b>: 데이터 기간 밖(2026.05)으로 측정 불가</li>
+  <li>관광지별 전년동기(1~4월) 방문 증가율: 영인산 +107%, 스파포레 +94%, 곡교천 +87%, 신정호 +70%</li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. 분석 대상 방송 현황</h2>
+
+<table>
+<tr>
+  <th>프로그램명</th><th>방송사</th><th>장르</th><th>방영일</th><th>시청률(%)</th><th>총예산(천원)</th><th>측정 가능</th>
+</tr>
+<tr><td>전국노래자랑 아산시편</td><td>KBS1</td><td>음악예능</td><td>2025.06.08</td><td>6.5</td><td class="right">3,518</td><td>O</td></tr>
+<tr><td>전현무계획2</td><td>MBN</td><td>여행버라이어티</td><td>2025.11.07</td><td>1.5</td><td class="right">50,000</td><td>O</td></tr>
+<tr><td>굿모닝 대한민국</td><td>KBS2</td><td>교양정보</td><td>2025.11.12~16</td><td>0.55</td><td class="right">20,000</td><td>O</td></tr>
+<tr><td>6시 내고향</td><td>KBS1</td><td>교양정보</td><td>2025.11.13</td><td>5.5</td><td class="right">110,000</td><td>O</td></tr>
+<tr><td>박원숙의 같이삽시다 시즌3</td><td>KBS2</td><td>예능</td><td>2025.11.24~12.15</td><td>3.0</td><td class="right">400,000</td><td>O</td></tr>
+<tr><td>뛰어야산다2</td><td>MBN</td><td>스포츠리얼버라이어티</td><td>2026.01.12</td><td>1.5</td><td class="right">45,000</td><td>O</td></tr>
+<tr><td>황제성의 황제파워</td><td>SBS파워FM</td><td>라디오공개방송</td><td>2026.05.09</td><td>-</td><td class="right">220,000</td><td>X</td></tr>
+</table>
+<p class="note">총예산은 broadcast_budget_summary 기준. 박원숙 시즌3은 아산 배분분이 아닌 전체 400,000천원으로 기재. 시비 기준 70,000천원.</p>
+
+<!-- ============================================================ -->
+<h2>3. 데이터 현황</h2>
+
+<table>
+<tr><th>데이터</th><th>기간</th><th>규모</th><th>용도</th></tr>
+<tr><td>카드매출 (외지인, 주간)</td><td>2024.12.30 ~ 2026.04.13</td><td>541,322건 / 17개 읍면동</td><td>소비 DID, ROI 산출</td></tr>
+<tr><td>T맵 내비게이션 (일별)</td><td>2025.01.01 ~ 2026.04.30</td><td>623,346건 / 9개 관광지 매칭</td><td>방문 DID, CausalImpact</td></tr>
+<tr><td>관광데이터랩 (소비/방문)</td><td>2018.01 ~ 2026.02(03)</td><td>98~99개월</td><td>장기 추세, YoY</td></tr>
+<tr><td>500m 격자 매출</td><td>주간</td><td>684개 격자</td><td>공간 정밀 분석</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>4. 배경 추세: 아산시 전체 관광 동향</h2>
+
+<h3>4-1. 방송월 전년대비 (아산시 전체)</h3>
+<table>
+<tr><th>방영월</th><th>해당 방송</th><th>관광소비 YoY(%)</th><th>외지인방문 YoY(%)</th></tr>
+<tr><td>2025-06</td><td>전국노래자랑</td><td>-4.6</td><td>+6.7</td></tr>
+<tr><td>2025-11</td><td>전현무계획2 / 굿모닝 / 6시내고향 / 박원숙</td><td>+8.4</td><td>+18.2</td></tr>
+<tr><td>2026-01</td><td>뛰어야산다2</td><td>+10.4</td><td>+6.7</td></tr>
+</table>
+<p class="note">시 전체 지표로, 방송 외 계절·경기 요인을 포함한 수치. 방송 단독 효과는 아래 인과추론에서 분리.</p>
+
+<h3>4-2. CausalImpact 배경 점검 (시 전체)</h3>
+<table>
+<tr><th>시점</th><th>지표</th><th>상대효과(%)</th><th>p-value</th><th>유의 여부</th></tr>
+<tr><td>2025-06 (전국노래자랑)</td><td>관광소비</td><td>+3.8</td><td>0.85</td><td>비유의</td></tr>
+<tr><td>2025-06 (전국노래자랑)</td><td>외지인방문</td><td>+6.1</td><td>0.39</td><td>비유의</td></tr>
+<tr><td>2025-11 (11월 집중)</td><td>관광소비</td><td>-7.7</td><td>0.72</td><td>비유의</td></tr>
+<tr><td>2025-11 (11월 집중)</td><td>외지인방문</td><td>-9.0</td><td>0.27</td><td>비유의</td></tr>
+<tr><td>2026-01 (뛰어야산다2)</td><td>관광소비</td><td>-7.3</td><td>0.82</td><td>비유의</td></tr>
+<tr><td>2026-01 (뛰어야산다2)</td><td>외지인방문</td><td>+11.3</td><td>0.32</td><td>비유의</td></tr>
+</table>
+<p class="note">모두 비유의 = 방송 시즌에 아산시 전체가 비정상적으로 튀지는 않았음. 방송 효과는 관광지 단위에서 확인해야 함.</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2>5. 인과추론 결과</h2>
+
+<h3>5-a. T맵 DID: 관광지 단위 이중차분 (HC1 강건 SE)</h3>
+<p>
+처치군: 방송 노출 관광지(POI), 통제군: 비노출 아산 관광지. 주말·공휴일·날씨 통제.
+</p>
+
+<table>
+<tr><th>프로그램명</th><th>노출 관광지</th><th>DID 효과(건/일)</th><th>p-value</th><th>R2</th><th>평행추세 p</th><th>판정</th></tr>
+<tr class="highlight-row">
+  <td>박원숙의 같이삽시다 시즌3</td>
+  <td class="left">곡교천, 도고온천, 스파포레, 신정호, 영인산, 온양온천, 외암민속마을</td>
+  <td><b>+349.96</b></td><td><b>0.01</b></td><td>0.74</td><td>0.63</td><td><b>유의 / 평행추세 OK</b></td>
+</tr>
+<tr class="highlight-row">
+  <td>전국노래자랑 아산시편</td>
+  <td class="left">신정호</td>
+  <td><b>+183.16</b></td><td><b>0.01</b></td><td>0.74</td><td>0.43</td><td><b>유의 / 평행추세 OK</b></td>
+</tr>
+<tr>
+  <td>뛰어야산다2</td>
+  <td class="left">곡교천, 신정호, 현충사</td>
+  <td>+0.77</td><td>0.98</td><td>0.82</td><td>0.31</td><td>비유의</td>
+</tr>
+<tr>
+  <td>굿모닝 대한민국</td>
+  <td class="left">곡교천, 온양온천, 피나클랜드, 현충사</td>
+  <td>-116.16</td><td>0.56</td><td>0.64</td><td>0.12</td><td>비유의</td>
+</tr>
+<tr><td colspan="7" style="background:#fff; border:none; text-align:left; font-size:9pt; color:#666;">
+전현무계획2, 6시 내고향: 특정 관광지 지목 없어 POI 단위 분석 불가
+</td></tr>
+</table>
+<p class="note">
+DID 효과: 방영 후 처치 관광지의 일평균 방문 증가분 (통제군 대비). 평행추세 p > 0.05이어야 DID 가정 충족.<br>
+HC1(이분산 강건) 표준오차 적용. 유의 기준: p < 0.05.
+</p>
+
+<h3>5-b. Placebo 검정 (가짜 방영일: 실제 -56일)</h3>
+<table>
+<tr><th>프로그램명</th><th>Placebo DID 효과</th><th>p-value</th><th>판정</th></tr>
+<tr><td>전국노래자랑 (placebo)</td><td>-411.43</td><td>0.00</td><td style="color:#c00;">유의 (주의)</td></tr>
+<tr><td>굿모닝 대한민국 (placebo)</td><td>+64.33</td><td>0.69</td><td>비유의 (정상)</td></tr>
+<tr><td>박원숙 시즌3 (placebo)</td><td>+346.04</td><td>0.07</td><td>비유의 (경계)</td></tr>
+<tr><td>뛰어야산다2 (placebo)</td><td>-487.41</td><td>0.01</td><td style="color:#c00;">유의 (주의)</td></tr>
+</table>
+<p class="note">
+Placebo 2/4건 유의 = 가짜 시점에서도 효과가 감지됨. 이는 DID 통제군 설계의 한계를 시사한다.<br>
+- 전국노래자랑 placebo 유의: 해당 시기(4월) 이순신축제 교란 가능성<br>
+- 뛰어야산다2 placebo 유의: 비수기 진입 시점의 급격한 하락이 반영된 것으로 추정<br>
+- 박원숙 시즌3은 실제 DID(p=0.01)와 placebo(p=0.07) 간 명확한 차이가 있어 결과 신뢰도 유지
+</p>
+
+<h3>5-c. CausalImpact: 반사실 추정 (T맵 POI별)</h3>
+<table>
+<tr><th>프로그램명</th><th>상대효과(%)</th><th>p-value</th><th>유의 여부</th></tr>
+<tr class="highlight-row"><td>박원숙의 같이삽시다 시즌3</td><td><b>+117.66</b></td><td><b>0.00</b></td><td><b>유의</b></td></tr>
+<tr><td>뛰어야산다2</td><td>+54.05</td><td>0.03</td><td>유의</td></tr>
+<tr><td>전국노래자랑 아산시편</td><td>-4.57</td><td>0.25</td><td>비유의</td></tr>
+<tr><td>굿모닝 대한민국</td><td>-70.93</td><td>0.00</td><td>유의 (음수)</td></tr>
+</table>
+<p class="note">
+CausalImpact는 사전 추세 기반 반사실(counterfactual)과 실제값의 차이. DID와 독립된 방법론이므로 교차검증 가능.<br>
+- 박원숙 시즌3: DID(+350건/일, 유의)와 CI(+117.7%, 유의) 모두 일관 → <b>가장 견고한 효과</b><br>
+- 전국노래자랑: DID(+183, 유의)이나 CI(-4.6%, 비유의) → 단기 급등 후 빠른 소멸 가능성<br>
+- 굿모닝 대한민국: DID(-116, 비유의)와 CI(-71%, 유의 음수) → 효과 미검출 또는 역효과
+</p>
+
+<h3>5-d. 전년동기 비교 (T맵, 2025 vs 2026 1~4월)</h3>
+<table>
+<tr><th>관광지</th><th>2025년 방문(건)</th><th>2026년 방문(건)</th><th>YoY 변화율(%)</th></tr>
+<tr class="highlight-row"><td>영인산</td><td class="right">3,634</td><td class="right">7,517</td><td><b>+106.9</b></td></tr>
+<tr><td>스파포레</td><td class="right">313</td><td class="right">606</td><td>+93.6</td></tr>
+<tr><td>곡교천</td><td class="right">2,079</td><td class="right">3,896</td><td>+87.4</td></tr>
+<tr><td>신정호</td><td class="right">18,227</td><td class="right">31,055</td><td>+70.4</td></tr>
+<tr><td>현충사</td><td class="right">9,392</td><td class="right">14,891</td><td>+58.6</td></tr>
+<tr><td>외암민속마을</td><td class="right">5,248</td><td class="right">7,455</td><td>+42.1</td></tr>
+<tr><td>도고온천</td><td class="right">13,557</td><td class="right">16,193</td><td>+19.4</td></tr>
+<tr><td>온양온천</td><td class="right">13,996</td><td class="right">16,506</td><td>+17.9</td></tr>
+<tr><td>피나클랜드</td><td class="right">6,785</td><td class="right">7,742</td><td>+14.1</td></tr>
+</table>
+<p class="note">
+전 관광지 YoY 양수. 특히 박원숙 시즌3에서 노출된 영인산(+107%), 스파포레(+94%), 곡교천(+87%)의 증가율이 두드러짐.<br>
+단, 방송 외 요인(신정호정원 개원 등)도 포함된 수치이므로 방송 단독 기여분은 DID/CI로 판단.
+</p>
+
+<h3>5-e. Staggered DID (카드매출, 11월 겹침 통합)</h3>
+<p>
+11월에 4개 방송이 겹치는 문제를 Callaway-Sant'Anna(2021) 방법으로 처리.
+읍면동별 첫 노출 시점을 기준으로 처치군/통제군 분리.
+</p>
+<table>
+<tr><th>항목</th><th>값</th></tr>
+<tr><td>처치군 읍면동</td><td>8개 (온양5동, 신창면, 염치읍, 온양1동, 도고면, 송악면, 영인면, 음봉면)</td></tr>
+<tr><td>통제군 읍면동</td><td>9개 (나머지)</td></tr>
+<tr><td>전체 ATT</td><td>-367,330원 (음수)</td></tr>
+</table>
+<p class="note">
+카드매출 기준 ATT가 음수(-367,330원)로, 처치 동의 관광업종 외지인 소비가 통제 동 대비 오히려 감소.<br>
+이는 (1) 방송 효과가 소비보다 '방문'에 집중, (2) 계절 교란(11~12월 단풍/온천 시즌)의 영향 가능성을 시사한다.
+</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2>6. 예산 대비 성과 (ROI)</h2>
+
+<p>카드매출 DID 순효과(통제군 차감) 기반으로 ROI를 산출하였다. 단순 전후 비교가 아닌 이중차분 방식이므로 계절·추세가 보정된 수치이다.</p>
+
+<table>
+<tr>
+  <th>프로그램명</th><th>장르</th><th>총예산<br>(천원)</th><th>시비<br>(천원)</th>
+  <th>카드 DID<br>순효과(원)</th><th>ROI(%)</th><th>1원당<br>유발소비</th><th>T맵 DID<br>(건/일)</th>
+</tr>
+<tr>
+  <td>전국노래자랑</td><td>음악예능</td><td class="right">3,518</td><td class="right">3,518</td>
+  <td class="right">-84,842,807</td><td>-2,512</td><td>-24.12</td><td class="pos">+183.16</td>
+</tr>
+<tr>
+  <td>전현무계획2</td><td>여행버라이어티</td><td class="right">50,000</td><td class="right">50,000</td>
+  <td>측정 불가</td><td>-</td><td>-</td><td>측정 불가</td>
+</tr>
+<tr>
+  <td>굿모닝 대한민국</td><td>교양정보</td><td class="right">20,000</td><td class="right">10,000</td>
+  <td class="right">-254,190,667</td><td>-1,371</td><td>-12.71</td><td>-116.16</td>
+</tr>
+<tr>
+  <td>6시 내고향</td><td>교양정보</td><td class="right">110,000</td><td class="right">60,000</td>
+  <td>측정 불가</td><td>-</td><td>-</td><td>측정 불가</td>
+</tr>
+<tr>
+  <td>박원숙 시즌3</td><td>예능</td><td class="right">400,000</td><td class="right">70,000</td>
+  <td class="right">-157,404,198</td><td>-139</td><td>-0.39</td><td class="pos">+349.96</td>
+</tr>
+<tr class="highlight-row">
+  <td>뛰어야산다2</td><td>스포츠리얼버라이어티</td><td class="right">45,000</td><td class="right">45,000</td>
+  <td class="right"><b>+91,859,636</b></td><td><b>+104</b></td><td><b>2.04</b></td><td>+0.77</td>
+</tr>
+</table>
+
+<h3>예산순위 vs 효과순위</h3>
+<table>
+<tr><th>프로그램명</th><th>예산순위</th><th>카드DID 효과순위</th><th>T맵 효과순위</th><th>순위차(카드)</th><th>해석</th></tr>
+<tr><td>박원숙 시즌3</td><td>1 (최다)</td><td>3</td><td>1</td><td>-2</td><td>T맵 효과 최대, 카드 효과 미흡</td></tr>
+<tr><td>6시 내고향</td><td>2</td><td>-</td><td>-</td><td>-</td><td>측정 불가</td></tr>
+<tr><td>전현무계획2</td><td>3</td><td>-</td><td>-</td><td>-</td><td>측정 불가</td></tr>
+<tr class="highlight-row"><td>뛰어야산다2</td><td>4</td><td><b>1</b></td><td>3</td><td>+3</td><td>예산 대비 카드 효과 최고</td></tr>
+<tr><td>굿모닝 대한민국</td><td>5</td><td>4</td><td>4</td><td>+1</td><td>효과 미검출</td></tr>
+<tr><td>전국노래자랑</td><td>6 (최소)</td><td>2</td><td>2</td><td>+4</td><td>최소 예산, T맵 효과 준수</td></tr>
+</table>
+
+<p class="note">
+<b>T맵(방문)과 카드(소비) 효과의 괴리:</b><br>
+- 박원숙 시즌3: T맵 방문 효과 1위이나 카드 DID 순효과는 음수. 이는 "관광지 방문은 증가했으나 해당 읍면동의 외지인 소비가 통제 동 대비 두드러지게 늘지는 않았다"는 의미. 방문이 소비로 전환되지 못한 구조적 원인(체류 시간, 소비 인프라 등) 검토 필요.<br>
+- 뛰어야산다2: 반대로 T맵 효과는 미미하나 카드 소비 양수. 비수기(1월) 기저효과 + 소수 방문자의 높은 객단가 가능성.
+</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2>7. 방송특성별 효과 비교</h2>
+
+<p>표본 4건으로 통계적 검정은 불가하며, 방향성 참고에 한정한다.</p>
+
+<h3>장르별 평균 DID 효과</h3>
+<table>
+<tr><th>장르</th><th>평균 DID 효과(건/일)</th><th>사례 수</th></tr>
+<tr><td>예능</td><td><b>+349.96</b></td><td>1</td></tr>
+<tr><td>음악예능</td><td>+183.16</td><td>1</td></tr>
+<tr><td>스포츠리얼버라이어티</td><td>+0.77</td><td>1</td></tr>
+<tr><td>교양정보</td><td>-116.16</td><td>1</td></tr>
+</table>
+
+<h3>출연자 유형별 평균 DID 효과</h3>
+<table>
+<tr><th>대표 유형</th><th>평균 DID 효과(건/일)</th><th>사례 수</th></tr>
+<tr><td>가수</td><td>+177.96</td><td>3</td></tr>
+<tr><td>기타</td><td>-116.16</td><td>1</td></tr>
+</table>
+
+<h3>시청률과 DID 효과의 상관</h3>
+<table>
+<tr><th>지표</th><th>값</th></tr>
+<tr><td>Pearson 상관계수</td><td>r = 0.61</td></tr>
+<tr><td>표본 수</td><td>4건</td></tr>
+<tr><td>해석</td><td>양의 상관 경향이나, 표본 부족으로 유의성 판단 불가</td></tr>
+</table>
+<p class="note">
+후속 연구에서 사례 축적 후(N >= 20) 본격적인 메타분석 권장. 현 단계에서는 "예능/음악예능 장르, 가수 출연자, 높은 시청률"이 효과 방향과 양의 관계라는 탐색적 소견만 제시.
+</p>
+
+<!-- ============================================================ -->
+<h2>8. 공간분석</h2>
+
+<h3>8-a. 유입거리 변화 (방송 전후)</h3>
+<table>
+<tr><th>프로그램명</th><th>평균거리(km)<br>방영 전</th><th>평균거리(km)<br>방영 후</th><th>거리변화(%)</th><th>원거리비율(%)<br>방영 전</th><th>원거리비율(%)<br>방영 후</th></tr>
+<tr><td>전국노래자랑</td><td>11.67</td><td>10.81</td><td>-7.4</td><td>8.71</td><td>7.17</td></tr>
+<tr><td>굿모닝 대한민국</td><td>18.87</td><td>18.94</td><td>+0.4</td><td>33.20</td><td>34.09</td></tr>
+<tr><td>박원숙 시즌3</td><td>15.15</td><td>14.72</td><td>-2.9</td><td>19.74</td><td>14.65</td></tr>
+<tr><td>뛰어야산다2</td><td>10.28</td><td>9.76</td><td>-5.1</td><td>4.19</td><td>2.02</td></tr>
+</table>
+<p class="note">
+모든 방송에서 방영 후 평균 유입거리가 감소하거나 유지 = 방송이 "더 먼 곳에서 유입을 끌어오는" 효과는 나타나지 않음.<br>
+특히 원거리 비율(충남 외 유입)이 대부분 감소 → 방송 효과는 주로 근거리(충남 내) 방문 증가에 기여한 것으로 판단.
+</p>
+
+<h3>8-b. 공간 파급 (Spillover)</h3>
+<table>
+<tr><th>항목</th><th>값</th></tr>
+<tr><td>대상 방송</td><td>박원숙의 같이삽시다 시즌3 (노출 동 7개)</td></tr>
+<tr><td>Moran's I</td><td>-0.315</td></tr>
+<tr><td>p-value (순열 검정 999회)</td><td>0.881</td></tr>
+<tr><td>해석</td><td>공간적 파급 근거 없음 (I < 0, p >> 0.05)</td></tr>
+</table>
+
+<h3>읍면동별 소비 변화율 (박원숙 시즌3 전후)</h3>
+<table>
+<tr><th>읍면동</th><th>변화율(%)</th><th>노출 여부</th></tr>
+<tr><td>송악면</td><td>+126.8</td><td>O</td></tr>
+<tr><td>도고면</td><td>+96.4</td><td>O</td></tr>
+<tr><td>온양3동</td><td>+74.3</td><td>-</td></tr>
+<tr><td>온양1동</td><td>+74.2</td><td>O</td></tr>
+<tr><td>온양6동</td><td>+63.6</td><td>-</td></tr>
+<tr><td>온양2동</td><td>+60.6</td><td>-</td></tr>
+<tr><td>온양4동</td><td>+58.2</td><td>-</td></tr>
+<tr><td>염치읍</td><td>+27.1</td><td>O</td></tr>
+<tr><td>탕정면</td><td>+23.5</td><td>-</td></tr>
+<tr><td>음봉면</td><td>+21.2</td><td>O</td></tr>
+<tr><td>둔포면</td><td>+15.4</td><td>-</td></tr>
+<tr><td>배방읍</td><td>+13.8</td><td>-</td></tr>
+<tr><td>온양5동</td><td>+11.1</td><td>O</td></tr>
+<tr><td>인주면</td><td>+3.9</td><td>-</td></tr>
+<tr><td>신창면</td><td>-6.4</td><td>-</td></tr>
+<tr><td>영인면</td><td>-9.1</td><td>O</td></tr>
+<tr><td>선장면</td><td>-16.7</td><td>-</td></tr>
+</table>
+<p class="note">
+노출 동과 비노출 동 모두 고르게 증가 → 방송 효과보다 계절(11~12월 가을/온천 시즌) 영향이 지배적.<br>
+Moran's I 음수 + 비유의 = 인접 동끼리의 군집 파급(spillover)은 통계적으로 확인되지 않음.
+</p>
+
+<h3>8-c. 연계 동선: 촬영지 → 다음 목적지 Top 10</h3>
+<p>박원숙 시즌3 방영 후 28일간, 촬영 관광지에서의 다음 이동 목적지.</p>
+<table>
+<tr><th>순위</th><th>출발 관광지</th><th>다음 목적지</th><th>이동 건수</th></tr>
+<tr><td>1</td><td>신정호</td><td>카페산시</td><td>35</td></tr>
+<tr><td>2</td><td>신정호</td><td>이마트/아산점</td><td>27</td></tr>
+<tr><td>3</td><td>곡교천</td><td>하운드호텔/불당점</td><td>20</td></tr>
+<tr><td>4</td><td>도고온천</td><td>더위트도고콘도</td><td>19</td></tr>
+<tr><td>5</td><td>신정호</td><td>카페안낙</td><td>19</td></tr>
+<tr><td>6</td><td>온양온천</td><td>이마트/아산점</td><td>19</td></tr>
+<tr><td>7</td><td>온양온천</td><td>온양온천시장</td><td>17</td></tr>
+<tr><td>8</td><td>신정호</td><td>순천향대학교</td><td>17</td></tr>
+<tr><td>9</td><td>신정호</td><td>아마르라운지</td><td>16</td></tr>
+<tr><td>10</td><td>도고온천</td><td>도고창고카페</td><td>15</td></tr>
+</table>
+<p class="note">
+신정호 → 카페/대형마트, 도고온천 → 콘도/카페, 온양온천 → 전통시장 패턴 확인.<br>
+정책적 시사: 촬영지-연계상권 간 동선 마케팅(할인쿠폰, 안내판 등) 고려 가능.
+</p>
+
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<h2>9. 종합 평가 매트릭스</h2>
+
+<p>방송별로 측정 단위와 효과를 종합 정리한 최종 결과표.</p>
+
+<table>
+<tr><th>프로그램명</th><th>측정 수준</th><th>효과 지표</th><th>효과값</th><th>신뢰도</th></tr>
+<tr class="highlight-row">
+  <td>박원숙의 같이삽시다 시즌3</td><td>POI 단위</td><td>T맵 DID(관광지)</td><td><b>+349.96건/일</b></td><td>평행추세 OK</td>
+</tr>
+<tr class="highlight-row">
+  <td>전국노래자랑 아산시편</td><td>POI 단위</td><td>T맵 DID(관광지)</td><td><b>+183.16건/일</b></td><td>평행추세 OK</td>
+</tr>
+<tr>
+  <td>전현무계획2</td><td>시 전체</td><td>데이터랩 소비 YoY(시전체)</td><td>+8.35%</td><td>시 전체(방송 외 요인 포함)</td>
+</tr>
+<tr>
+  <td>굿모닝 대한민국</td><td>POI 단위</td><td>T맵 DID(관광지)</td><td>-116.16건/일</td><td>평행추세 OK (비유의)</td>
+</tr>
+<tr>
+  <td>6시 내고향</td><td>시 전체</td><td>데이터랩 소비 YoY(시전체)</td><td>+8.35%</td><td>시 전체(방송 외 요인 포함)</td>
+</tr>
+<tr>
+  <td>뛰어야산다2</td><td>POI 단위</td><td>T맵 DID(관광지)</td><td>+0.77건/일</td><td>평행추세 OK (비유의)</td>
+</tr>
+<tr>
+  <td>황제성의 황제파워</td><td>측정 불가</td><td>-</td><td>-</td><td>데이터 기간 밖(2026.05~)</td>
+</tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>10. 결론 및 정책 제언</h2>
+
+<h3>10-1. 핵심 발견</h3>
+<table>
+<tr><th>발견</th><th>근거</th><th>신뢰도</th></tr>
+<tr>
+  <td>박원숙 시즌3이 관광지 방문에 가장 큰 효과</td>
+  <td>DID +350건/일(p=0.01), CI +117.7%(유의), 다수 관광지 노출, 4회 연속 방영</td>
+  <td>높음</td>
+</tr>
+<tr>
+  <td>전국노래자랑이 최소 예산 대비 가장 효율적</td>
+  <td>352만원으로 DID +183건/일(p=0.01) 달성</td>
+  <td>높음 (단, placebo 주의)</td>
+</tr>
+<tr>
+  <td>방문 증가가 소비 증가로 자동 전환되지 않음</td>
+  <td>T맵 DID 양수인 방송도 카드 DID는 음수</td>
+  <td>높음</td>
+</tr>
+<tr>
+  <td>원거리 유입 효과는 제한적</td>
+  <td>모든 방송에서 유입거리 감소 또는 유지</td>
+  <td>중간</td>
+</tr>
+<tr>
+  <td>공간적 파급(spillover) 근거 부족</td>
+  <td>Moran's I = -0.315, p = 0.881</td>
+  <td>중간</td>
+</tr>
+</table>
+
+<h3>10-2. 정책 제언</h3>
+<ol>
+  <li><b>다회차 연속 방영 프로그램 우선 투자:</b> 박원숙 시즌3(4회)처럼 반복 노출이 1회성보다 효과가 컸음. 향후 사업 기획 시 다회차 프로그램 비중 확대 권장.</li>
+  <li><b>방문→소비 전환 인프라 구축:</b> 관광지 방문은 증가하나 매출로 연결되지 않는 구조적 문제 확인. 촬영지 인근 상권 활성화(간편결제, 기념품, F&B 다양화) 필요.</li>
+  <li><b>연계 동선 마케팅:</b> 신정호→카페, 도고온천→콘도, 온양온천→전통시장 등 확인된 이동 경로에 연계 할인·안내 시스템 도입.</li>
+  <li><b>특정 관광지 미지목 방송의 효과 측정 한계:</b> 전현무계획2, 6시 내고향은 "아산시 일원"으로 촬영하여 POI 단위 인과분석이 불가. 향후 방송 계약 시 촬영 장소 명시 조건 포함 필요.</li>
+  <li><b>비수기 방송의 전략적 활용:</b> 뛰어야산다2(1월)는 비수기에도 유일한 카드 ROI 양수(+104%)를 기록. 비수기 방영은 계절 교란이 적어 효과 측정이 명확하고, 기저 방문객 대비 효과 증폭 가능.</li>
+  <li><b>Placebo 검정 결과 반영:</b> DID 유의한 2건(전국노래자랑, 박원숙) 중 전국노래자랑은 placebo에서도 유의 → 이순신축제 등 교란 가능성. 후속 분석에서 축제 효과 분리 필요.</li>
+</ol>
+
+<h3>10-3. 분석 한계 및 후속 과제</h3>
+<ul>
+  <li>카드매출은 주 단위 집계로 일별 변화 포착에 한계</li>
+  <li>T맵은 내비게이션 이용자만 포함하여 전체 관광객의 일부</li>
+  <li>표본 6건으로 방송특성(장르, 출연자, 시청률)별 인과적 해석 불가 — 사례 축적 필요</li>
+  <li>Placebo test 2/4건 유의 → DID 통제군 설계 보완 여지</li>
+  <li>황제성의 황제파워(2026.05)는 데이터 확보 후 추가 분석 필요</li>
+</ul>
+
+<div class="watermark">
+  아산시 방송 홍보 효과 분석 | 분석 도구: Python (statsmodels, scipy) | 방법론: DID, CausalImpact, Staggered DID, KDE, Moran's I
+</div>
+
+</body>
+</html>
